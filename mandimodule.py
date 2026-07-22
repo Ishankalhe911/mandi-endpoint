@@ -584,22 +584,25 @@ async def get_mandi_optimize(
         })
 
     # Sort by the Risk-Adjusted Score
+    # -----------------------------------------------------------------------
+    # FINAL EXTRACTION & CLEANUP
+    # -----------------------------------------------------------------------
+
+    # 1. Sort strictly by the Risk-Adjusted Score (Highest Profit First)
     ranked.sort(key=lambda m: m["risk_adjusted_score"], reverse=True)
     
-    # FINAL BYPASS: Guarantee the baseline is in the Top 3 output
+    # 2. Extract Top 3 Profitable Mandis
     final_top_3 = ranked[:3]
+    
+    # 3. Extract the Nearest Baseline Mandi (It was guaranteed an OSRM calc earlier)
+    nearest_mandi = None
     if closest_active_mandi_name:
-        if not any(m["is_local_baseline"] for m in final_top_3):
-            for m in ranked:
-                if m["is_local_baseline"]:
-                    if len(final_top_3) == 3:
-                        final_top_3[2] = m  # Swap out the 3rd place for the baseline
-                    else:
-                        final_top_3.append(m)
-                    break
-    
-    # Remove the internal score before returning to the frontend to keep the JSON clean
-    
+        for m in ranked:
+            if m["is_local_baseline"]:
+                nearest_mandi = m.copy() # Use .copy() so we can clean keys independently
+                break
+
+    # 4. Handle edge case: No markets found
     if not final_top_3:
         return {
             "error": True,
@@ -608,24 +611,21 @@ async def get_mandi_optimize(
             "crop": crop
         }
 
-   
-    # Clean up internal sorting keys before returning JSON
-    
-    for r in final_top_3:
+    # 5. Clean up internal sorting keys before returning JSON
+    def clean_mandi_record(r: dict):
         r.pop("risk_adjusted_score", None)
-        r.pop("internal_sort_value", None) # <-- Fixed!
-    
-    if price_only_mode:
-        # No real quantity was given, so freight/fleet/deduction figures
-        # are meaningless (they were computed against a 1-quintal
-        # placeholder purely to rank candidates) - strip them so the
-        # caller never sees fabricated financial numbers.
-        for r in final_top_3:
+        r.pop("internal_sort_value", None)
+        if price_only_mode:
             r.pop("gross_revenue", None)
             r.pop("logistics_estimate", None)
             r.pop("net_return", None)
+        return r
 
+    final_top_3 = [clean_mandi_record(r) for r in final_top_3]
+    if nearest_mandi:
+        nearest_mandi = clean_mandi_record(nearest_mandi)
 
+    # 6. Return the updated schema
     return {
         "error": False,
         "mode": "price_only" if price_only_mode else ("now" if time_horizon == "now" else "future_estimate"),
@@ -637,19 +637,23 @@ async def get_mandi_optimize(
         "radius_km": radius_km,
         "time_horizon": time_horizon,
         "method_note": None if time_horizon == "now" else METHOD_UPGRADE_PATH,
+        
+        # --- THE NEW SPLIT STRUCTURE ---
+        "nearest_mandi": nearest_mandi,
+        "top_mandis": final_top_3,
+        
         "disclaimer": (
             "Prices are live government APMC modal rates. Transport, driver allowances, "
             "and APMC deductions are estimates based on standard regional averages. "
             "Please verify exact truck rates with your local driver before departing."
         ),
         "agent_execution_rules": {
-            "presentation_rule": "NEVER present a single fixed profit number. You MUST present the net_return as a range (conservative to optimistic).",
+            "presentation_rule": "First, state the price at the nearest_mandi to establish trust and a local baseline. Then, present the top_mandis as higher-profit arbitrage opportunities relative to that baseline. NEVER present a single fixed profit number; use the net_return range.",
             "pre_dispatch_checklist_to_show_user": [
                 "Call your transport driver now to lock in the exact freight rate.",
                 "Ensure your crop moisture meets FAQ (Fair Average Quality) standards to get the optimistic price.",
                 "Call a local contact at the target APMC to ensure the market is open tomorrow and not on strike."
             ],
-            # FIXED: Nested the warning inside the rules dictionary so it doesn't overwrite!
             "variety_warning_to_show_user": (
                 None if variety else
                 "Warning: Price based on the highest-priced variety available at the market today "
@@ -657,7 +661,6 @@ async def get_mandi_optimize(
                 "before dispatch, as lower grades will fetch significantly less."
             )
         },
-        "top_mandis": final_top_3,
         "markets_evaluated_haversine": len(pre_candidates),
         "markets_checked_via_distance_lookup": len(finalists),
         "markets_skipped_no_coords": skipped_count
