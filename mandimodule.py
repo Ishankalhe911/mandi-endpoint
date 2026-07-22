@@ -596,23 +596,27 @@ async def get_mandi_optimize(
     pre_candidates = list(pre_candidates_dict.values())
 
     # STEP 2: only top MAX_OSRM_CANDIDATES get a real distance lookup.
-    # Most will hit cache; only genuine misses touch the rate-limited
-    # live OSRM path.
+    # We sort by profit first.
     pre_candidates.sort(key=lambda c: c["estimated_net_profit_inr"], reverse=True)
     finalists = pre_candidates[:MAX_OSRM_CANDIDATES]
 
-    # NEW: THE BYPASS - Ensure the absolute closest mandi is ALWAYS in the OSRM finalists
-    if closest_active_mandi_name:
-        is_closest_in_finalists = any(c["english_market_name"] == closest_active_mandi_name for c in finalists)
-        if not is_closest_in_finalists:
-            # Find it in the pre_candidates and force it into finalists
-            for c in pre_candidates:
-                if c["english_market_name"] == closest_active_mandi_name:
-                    finalists.append(c)
-                    break
+    # --- THE UPGRADED BYPASS ---
+    # Find the top 3 absolute closest markets by straight-line distance
+    pre_candidates_by_distance = sorted(
+        pre_candidates, 
+        key=lambda c: _haversine_km(lat, lon, c["mlat"], c["mlon"])
+    )
+    top_3_haversine = pre_candidates_by_distance[:3]
+
+    # Force all 3 of them into the OSRM check if they aren't already there!
+    for closest_cand in top_3_haversine:
+        if not any(f["english_market_name"] == closest_cand["english_market_name"] for f in finalists):
+            finalists.append(closest_cand)
+    # ---------------------------
 
     ranked = []
     for cand in finalists:
+        # ... [rest of your OSRM loop remains exactly the same] ...
         rec = cand["rec"]
         dist_km, dist_source = await _fetch_osrm_distance_km(lat, lon, cand["mlat"], cand["mlon"], cand["english_market_name"])
         
