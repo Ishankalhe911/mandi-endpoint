@@ -187,6 +187,67 @@ MARATHI_TO_ENGLISH = {
     "चाकूर": "Chakur", "निलंगा": "Nilanga", "भोकरदन": "Bhokardan", "अंबड": "Ambad",
     "जिंतूर": "Jintur", "सेलू": "Selu", "गंगाखेड": "Gangakhed", "मुदखेड": "Mudkhed", 
     "उमरी": "Umri", "नायगाव": "Naigaon", "कंधार": "Kandhar"
+}# --- Marathi to English APMC Translation Bridge (Production Grade) ---
+MARATHI_TO_ENGLISH = {
+    # 1. Pune & Western Maharashtra
+    "पुणे": "Pune", "बारामती": "Baramati", "इंदापूर": "Indapur", "शिरूर": "Shirur", 
+    "दौंड": "Daund", "जुन्नर": "Junnar", "भोर": "Bhor", "सासवड": "Saswad", 
+    "खेड": "Khed", "मंचर": "Manchar", "तळेगाव": "Talegaon", "पिंपरी": "Pune(Pimpri)", 
+    "मोशी": "Pune(Moshi)", "सातारा": "Satara", "कराड": "Karad", "फलटण": "Phaltan", 
+    "वाई": "Wai", "कोरेगाव": "Koregaon", "पाटण": "Patan", "सांगली": "Sangli", 
+    "तासगाव": "Tasgaon", "इस्लामपूर": "Islampur", "विटा": "Vita", "आष्टा": "Ashta", 
+    "पलूस": "Palus", "आटपाडी": "Atpadi", "कोल्हापूर": "Kolhapur", "इचलकरंजी": "Ichalkaranji", 
+    "जयसिंगपूर": "Jaysingpur", "गडहिंग्लज": "Gadhinglaj", "कागल": "Kagal",
+
+    # 2. Solapur & Surrounding Hubs
+    "सोलापूर": "Solapur", "सोलापुर": "Solapur", "अक्कलकोट": "Akkalkot", "दुधनी": "Dudhani", 
+    "बार्शी": "Barshi", "पंढरपूर": "Pandharpur", "मंगळवेढा": "Mangalwedha", "सांगोला": "Sangola", 
+    "करमाळा": "Karmala", "माढा": "Madha", "मोहोळ": "Mohol", "अकलूज": "Akluj", "कुर्डूवाडी": "Kurduwadi",
+
+    # 3. Nashik & Khandesh
+    "नाशिक": "Nashik", "लासलगाव": "Lasalgaon", "मालेगाव": "Malegaon", "पिंपळगाव": "Pimpalgaon", 
+    "निफाड": "Niphad", "येवला": "Yeola", "मनमाड": "Manmad", "कळवण": "Kalwan", "सटाणा": "Satana", 
+    "सिन्नर": "Sinnar", "नांदगाव": "Nandgaon", "सुरगाणा": "Surgana", "जळगाव": "Jalgaon", 
+    "भुसावळ": "Bhusawal", "अमळनेर": "Amalner", "चोपडा": "Chopda", "पाचोरा": "Pachora", 
+    "चाळीसगाव": "Chalisgaon", "रावेर": "Raver", "यावल": "Yawal", "बोदवड": "Bodwad", 
+    "धुळे": "Dhule", "शिरपूर": "Shirpur", "दोंडाईचा": "Dondaicha", "साक्री": "Sakri", 
+    "नंदुरबार": "Nandurbar", "शहादा": "Shahada", "नवापूर": "Navapur",
+
+    # 4. Ahmednagar
+    "अहमदनगर": "Ahmednagar", "अहिल्यानगर": "Ahmednagar", "राहुरी": "Rahuri", "कोपरगाव": "Kopargaon", 
+    "श्रीरामपूर": "Shrirampur", "संगमनेर": "Sangamner", "पाथर्डी": "Pathardi", "शेवगाव": "Shevgaon", 
+    "जामखेड": "Jamkhed", "कर्जत": "Karjat", "श्रीगोंदा": "Shrigonda", "राहाता": "Rahata", "नेवासा": "Nevasa",
+
+    # 5. Marathwada
+    "औरंगाबाद": "Aurangabad", "छत्रपती संभाजीनगर": "Aurangabad", "सिल्लोड": "Sillod", "पैठण": "Paithan", 
+    "वैजापूर": "Vaijapur", "गंगापूर": "Gangapur", "जालना": "Jalna", "अंबड": "Ambad", "भोकरदन": "Bhokardan", 
+    "परतूर": "Partur", "बीड": "Beed", "माजलगाव": "Majalgaon", "गेवराई": "Georai", "अंबाजोगाई": "Ambajogai", 
+    "परळी": "Parali", "परळी वैजनाथ": "Parali", "केज": "Kaij", "धारूर": "Dharur", "उस्मानाबाद": "Osmanabad", 
+    "धाराशिव": "Osmanabad", "तुळजापूर": "Tuljapur", "उमरगा": "Omerga", "कळंब": "Kallam", "भूम": "Bhum", 
+    "परांडा": "Paranda", "परभणी": "Parbhani", "सेलू": "Selu", "जिंतूर": "Jintur", "गंगाखेड": "Gangakhed", 
+    "मानवत": "Manwath", "पूर्णा": "Purna", "हिंगोली": "Hingoli", "वसमत": "Basmath", "कळमनुरी": "Kalamnuri", 
+    "नांदेड": "Nanded", "भोकर": "Bhokar", "देगलूर": "Degloor", "किनवट": "Kinwat", "मुखेड": "Mukhed", 
+    "हदगाव": "Hadgaon", "लोहा": "Loha", "कंधार": "Kandhar", "धर्माबाद": "Dharmabad", "लातूर": "Latur", 
+    "उदगीर": "Udgir", "अहमदपूर": "Ahmadpur", "निलंगा": "Nilanga", "चाकूर": "Chakur", "औसा": "Ausa",
+
+    # 6. Vidarbha
+    "अमरावती": "Amravati", "अचलपूर": "Achalpur", "मोर्शी": "Morshi", "वरूड": "Warud", "दर्यापूर": "Daryapur", 
+    "अंजनगाव": "Anjangaon", "अकोला": "Akola", "अकोट": "Akot", "मूर्तीजापूर": "Murtizapur", "तेल्हारा": "Telhara", 
+    "बाळापूर": "Balapur", "वाशिम": "Washim", "वाशीम": "Washim", "कारंजा": "Karanja", "मंगरुळपीर": "Mangrulpir", 
+    "रिसोड": "Risod", "बुलढाणा": "Buldhana", "खामगाव": "Khamgaon", "मलकापूर": "Malkapur", "शेगाव": "Shegaon", 
+    "नांदुरा": "Nandura", "जळगाव जामोद": "Jalgaon jamod", "चिखली": "Chikhli", "देऊळगाव राजा": "Deulgaon raja", 
+    "यवतमाळ": "Yavatmal", "पुसद": "Pusad", "उमरखेड": "Umarkhed", "दारव्हा": "Darwha", "वणी": "Wani", 
+    "दिग्रस": "Digras", "पांढरकवडा": "Pandharkawada", "नागपूर": "Nagpur", "काटोल": "Katol", "रामटेक": "Ramtek", 
+    "उमरेड": "Umred", "नरखेड": "Narkhed", "कामठी": "Kamptee", "वर्धा": "Wardha", "हिंगणघाट": "Hinganghat", 
+    "आर्वी": "Arvi", "सिंदी": "Sindhi", "चंद्रपूर": "Chandrapur", "वरोरा": "Warora", "ब्रह्मपुरी": "Bramhapuri", 
+    "राजुरा": "Rajura", "भंडारा": "Bhandara", "तुमसर": "Tumsar", "गोंदिया": "Gondia", "तिरोरा": "Tirora", 
+    "आमगाव": "Amgaon", "गडचिरोली": "Gadchiroli", "आरमोरी": "Armori",
+
+    # 7. Konkan & Mumbai
+    "मुंबई": "Mumbai", "वाशी": "Vashi", "पनवेल": "Panvel", "कल्याण": "Kalyan", "भिवंडी": "Bhiwandi", 
+    "पालघर": "Palghar", "डहाणू": "Dahanu", "वसई": "Vasai", "अलिबाग": "Alibag", "पेण": "Pen", "रोहा": "Roha", 
+    "महाड": "Mahad", "रत्नागिरी": "Ratnagiri", "चिपळूण": "Chiplun", "दापोली": "Dapoli", "खेड (रत्नागिरी)": "Khed (ratnagiri)", 
+    "सिंधुदुर्ग": "Sindhudurg", "कुडाळ": "Kudal", "सावंतवाडी": "Sawantwadi", "कणकवली": "Kankavli"
 }
 CROP_NAME_MAP = {
     "soybean": "सोयाबिन",
