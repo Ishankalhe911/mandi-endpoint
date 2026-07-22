@@ -1,0 +1,18 @@
+# Web Framework & Server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+gunicorn>=21.2.0
+
+# Data Validation
+pydantic>=2.5.3
+
+# Web Scraping (Mandi Rate Limit Bypass)
+playwright>=1.41.0
+beautifulsoup4>=4.12.3
+
+# x402 Payment Protocol (Algorand AVM)
+x402-avm[fastapi,avm,extensions]>=2.0.2
+
+# Environment & Utilities
+python-dotenv>=1.0.0
+pytz>=2024.1
