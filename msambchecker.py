@@ -53,7 +53,18 @@ CROP_NAME_MAP = {
     "rice": "भात",
     "paddy": "भात"
 }
-
+CROPS_TO_SCRAPE = [
+    "soybean", 
+    "cotton", 
+    "tur",       # Only list "tur" once! Do not list the aliases here.
+    "jowar", 
+    "wheat", 
+    "onion", 
+    "chana", 
+    "maize", 
+    "bajra", 
+    "rice"
+]
 
 def _init_cache_db():
     conn = sqlite3.connect(CACHE_DB_PATH)
@@ -71,13 +82,18 @@ _init_cache_db()
 
 
 def _cache_get_sync(commodity: str) -> Optional[list]:
-    key = commodity.strip().lower()
+    # 1. Normalize the key using the Marathi translation
+    marathi_name = CROP_NAME_MAP.get(commodity.strip().lower())
+    if not marathi_name:
+        return None
+        
     today_str = datetime.now(IST).date().isoformat()
     conn = sqlite3.connect(CACHE_DB_PATH)
     try:
         row = conn.execute(
+            # 2. Search using the Marathi name
             "SELECT payload_json, cached_date FROM msamb_price_cache WHERE cache_key = ?",
-            (key,),
+            (marathi_name,),
         ).fetchone()
     finally:
         conn.close()
@@ -93,13 +109,18 @@ def _cache_get_sync(commodity: str) -> Optional[list]:
 
 
 def _cache_set_sync(commodity: str, records: list):
-    key = commodity.strip().lower()
+    # 1. Normalize the key using the Marathi translation
+    marathi_name = CROP_NAME_MAP.get(commodity.strip().lower())
+    if not marathi_name:
+        return
+        
     today_str = datetime.now(IST).date().isoformat()
     conn = sqlite3.connect(CACHE_DB_PATH)
     try:
         conn.execute(
+            # 2. Save using the Marathi name
             "INSERT OR REPLACE INTO msamb_price_cache (cache_key, payload_json, cached_date) VALUES (?, ?, ?)",
-            (key, json.dumps(records), today_str),
+            (marathi_name, json.dumps(records), today_str),
         )
         conn.commit()
     finally:
@@ -239,7 +260,7 @@ async def warm_daily_cache(delay_between_scrapes_seconds: float = 3.0) -> dict:
     on a small Render instance.
     """
     results = {}
-    for crop in CROP_NAME_MAP:
+    for crop in CROPS_TO_SCRAPE:
         try:
             records = await fetch_msamb_prices(crop)
             results[crop] = len(records)

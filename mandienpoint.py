@@ -148,12 +148,12 @@ routes: dict[str, RouteConfig] = {
 async def lifespan(app: FastAPI):
     # --- Everything before 'yield' runs on Startup ---
     scheduler.add_job(warm_daily_cache, "cron", hour=13, minute=0)  
-    scheduler.add_job(warm_daily_cache, "cron", hour=16, minute=0)  
+    scheduler.add_job(warm_daily_cache, "cron", hour=16, minute=15)  
     scheduler.add_job(warm_daily_cache, "cron", hour=18, minute=0)  
     
     # Add a test timer a few minutes from now to see it run locally!
     scheduler.add_job(warm_daily_cache, "cron", hour=17, minute=1)
-    scheduler.add_job(warm_daily_cache, "cron", hour=15, minute=42) 
+     
     
     
     scheduler.start()
