@@ -32,40 +32,70 @@ CACHE_DB_PATH = pathlib.Path(__file__).parent / "msamb_price_cache.db"
 PLAYWRIGHT_TIMEOUT_MS = 45000 
 
 CROP_NAME_MAP = {
+    # --- Existing Grains & Pulses ---
     "soybean": "सोयाबिन",
     "cotton": "कापूस",
     "tur": "तूर",
-    "pigeon pea": "तूर",  # Alias for Tur
-    "red gram": "तूर",    # Alias for Tur
-    "arhar": "तूर",       # Alias for Tur
+    "pigeon pea": "तूर",  # Alias
+    "red gram": "तूर",    # Alias
+    "arhar": "तूर",       # Alias
     "jowar": "ज्वारी",
     "wheat": "गहू",
     "onion": "कांदा",
-    "chana": "हरभरा",     # Adding Bengal Gram just in case
-    "chickpea": "हरभरा",   # Alias for Chana
-    # ... your existing map ...
-    
-    # Extra aliases for high-volume commercial queries
+    "chana": "हरभरा",
+    "chickpea": "हरभरा",  # Alias
     "maize": "मका",
-    "corn": "मका",
+    "corn": "मका",        # Alias
     "bajra": "बाजरी",
-    "pearl millet": "बाजरी",
+    "pearl millet": "बाजरी", # Alias
     "rice": "भात",
-    "paddy": "भात"
+    "paddy": "भात",       # Alias
+
+    # --- NEW: Oilseeds & Cash Crops ---
+    "sunflower": "सूर्यफूल",
+    "groundnut": "भुईमूग",
+    "peanut": "भुईमूग",   # Alias
+    "sugarcane": "ऊस",    # Note: Often traded directly to mills via FRP, but handled here just in case.
+    "Drumstick":"शेवगा",
+
+    # --- NEW: Vegetables & Spices ---
+    "potato": "बटाटा",
+    "brinjal": "वांगी",
+    "eggplant": "वांगी",  # Alias
+    "tomato": "टोमॅटो",
+    "garlic": "लसूण",
+    "lahsun": "लसूण",     # Alias
+    "chilli": "मिरची",
+    "mirchi": "मिरची",    # Alias
+    "capsicum": "ढोबळी मिरची",
+    "shimla mirch": "ढोबळी मिरची", # Alias
+    "spinach": "पालक",
+    "palak": "पालक",      # Alias
+    "fenugreek": "मेथी",
+    "methi": "मेथी",      # Alias
+    "turmeric": "हळद",
+    "haldi": "हळद",
+    # --- NEW: Fruits ---
+    "pomegranate": "डाळिंब",
+    "orange": "संत्रा",
+    "mango": "आंबा"
 }
 CROPS_TO_SCRAPE = [
-    "soybean", 
-    "cotton", 
-    "tur",       # Only list "tur" once! Do not list the aliases here.
-    "jowar", 
-    "wheat", 
-    "onion", 
-    "chana", 
-    "maize", 
-    "bajra", 
-    "rice"
+    # Grains & Pulses
+    "soybean", "cotton", "tur", "jowar", "wheat", 
+    "onion", "chana", "maize", "bajra", "rice",
+    
+    # Oilseeds & Cash Crops
+    "sunflower", "groundnut", "sugarcane",
+    
+    # Vegetables & Spices
+    "potato", "brinjal", "tomato", "garlic", 
+    "chilli", "capsicum", "spinach", "fenugreek", 
+    "turmeric",  # <-- Added here
+    
+    # Fruits
+    "pomegranate", "orange", "mango", "lemon", "guava","drumstick"
 ]
-
 def _init_cache_db():
     conn = sqlite3.connect(CACHE_DB_PATH)
     conn.execute("""
@@ -82,11 +112,10 @@ _init_cache_db()
 
 
 def _cache_get_sync(commodity: str) -> Optional[list]:
-    # 1. Normalize the key using the Marathi translation
-    marathi_name = CROP_NAME_MAP.get(commodity.strip().lower())
-    if not marathi_name:
-        return None
-        
+    # 1. Try to translate to Marathi. 
+    # 2. If it is not in the dictionary, fallback to the raw user input and AT LEAST TRY IT.
+    marathi_name = CROP_NAME_MAP.get(commodity.strip().lower(), commodity.strip())
+    
     today_str = datetime.now(IST).date().isoformat()
     conn = sqlite3.connect(CACHE_DB_PATH)
     try:
