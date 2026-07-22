@@ -644,33 +644,34 @@ async def get_mandi_optimize(
             "risk_adjusted_score": risk_adjusted_score
         })
 
-    # Sort by the Risk-Adjusted Score
-    # -----------------------------------------------------------------------
+# -----------------------------------------------------------------------
     # FINAL EXTRACTION & CLEANUP
     # -----------------------------------------------------------------------
 
-    # 1. Sort strictly by the Risk-Adjusted Score (Highest Profit First)
-    ranked.sort(key=lambda m: m["risk_adjusted_score"], reverse=True)
-    
-    # 2. Extract Top 3 Profitable Mandis
-    final_top_3 = ranked[:3]
-    
-    # 3. Extract the Nearest Baseline Mandi (It was guaranteed an OSRM calc earlier)
-    nearest_mandi = None
-    if closest_active_mandi_name:
-        for m in ranked:
-            if m["is_local_baseline"]:
-                nearest_mandi = m.copy() # Use .copy() so we can clean keys independently
-                break
-
-    # 4. Handle edge case: No markets found
-    if not final_top_3:
+    # 1. Handle edge case: No markets found at all
+    if not ranked:
         return {
             "error": True,
             "error_type": "NO_MARKETS_IN_RADIUS",
             "error_reason": f"No active markets found for '{crop}' within {radius_km}km today.",
             "crop": crop
         }
+
+    # 2. FIND THE TRUE NEAREST MANDI (Based on REAL OSRM road distance)
+    # Python's min() safely scans the exact driving distances of all evaluated markets
+    nearest_mandi_raw = min(ranked, key=lambda m: m["driving_distance"]["value_km"])
+    nearest_mandi = nearest_mandi_raw.copy()
+    nearest_mandi["is_local_baseline"] = True
+
+    # 3. Sort strictly by the Risk-Adjusted Score (Highest Profit First)
+    ranked.sort(key=lambda m: m["risk_adjusted_score"], reverse=True)
+    
+    # 4. Extract Top 3 Profitable Mandis
+    final_top_3 = ranked[:3]
+    
+    # Update the baseline flag dynamically for the top 3 so they don't lie to the frontend
+    for m in final_top_3:
+        m["is_local_baseline"] = (m["market"] == nearest_mandi["market"])
 
     # 5. Clean up internal sorting keys before returning JSON
     def clean_mandi_record(r: dict):
@@ -683,8 +684,7 @@ async def get_mandi_optimize(
         return r
 
     final_top_3 = [clean_mandi_record(r) for r in final_top_3]
-    if nearest_mandi:
-        nearest_mandi = clean_mandi_record(nearest_mandi)
+    nearest_mandi = clean_mandi_record(nearest_mandi)
 
     # 6. Return the updated schema
     return {
