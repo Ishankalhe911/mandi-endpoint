@@ -3,6 +3,9 @@ fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 gunicorn>=21.2.0
 
+# Background Tasks / Schedulers
+APScheduler>=3.10.0
+
 # Data Validation
 pydantic>=2.5.3
 
