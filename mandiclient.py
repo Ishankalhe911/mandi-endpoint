@@ -71,9 +71,9 @@ async def run_test():
         "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=", 
         ExactAvmScheme(signer=signer)
     )
-    
-    # ⚠️ Replace with local host (e.g. http://localhost:8002/mandi-optimize) or your live Render API URL
-    API_URL = "http://localhost:8002/mandi-optimize" 
+
+    # ✅ CORRECT:
+    API_URL = "https://mandi-endpoint.onrender.com/mandi-optimize"
     
     # Payload targeting the Mandi Optimization schema
     payload = {
@@ -92,7 +92,7 @@ async def run_test():
             response = await http.post(
                 API_URL,
                 json=payload,
-                timeout=120.0
+                timeout=240.0
             )
             
             print(f"\nStatus Code Received: {response.status_code}")
@@ -110,3 +110,4 @@ async def run_test():
 
 if __name__ == "__main__":
     asyncio.run(run_test())
+    

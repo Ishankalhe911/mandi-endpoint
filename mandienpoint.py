@@ -152,7 +152,8 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(warm_daily_cache, "cron", hour=18, minute=0)  
     
     # Add a test timer a few minutes from now to see it run locally!
-    scheduler.add_job(warm_daily_cache, "cron", hour=17, minute=1) 
+    scheduler.add_job(warm_daily_cache, "cron", hour=17, minute=1)
+    scheduler.add_job(warm_daily_cache, "cron", hour=15, minute=42) 
     
     
     scheduler.start()
