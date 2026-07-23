@@ -77,12 +77,12 @@ async def run_test():
     
     # Payload targeting the Mandi Optimization schema
     payload = {
-        "lat": 17.11,
-        "lon": 76.94,
-        "crop": "pigeon pea",
-        
+        "lat": 19.05,           # Rural coordinates just outside Nanded
+        "lon": 77.20,           
+        "crop": "soybean",      # A crop with extremely high daily trading volume
+        "qty_quintals": 60,     # Triggers the heavy truck (10-wheeler) logistics math
         "time_horizon": "now",
-        
+        "radius_km": 120        # Wide enough to reach Hingoli or Parbhani
     }
 
     print(f"\n🚀 Sending x402 payment payload to: {API_URL}")

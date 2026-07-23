@@ -48,8 +48,8 @@ CROP_NAME_MAP = {
     "corn": "मका",        # Alias
     "bajra": "बाजरी",
     "pearl millet": "बाजरी", # Alias
-    "rice": "भात",
-    "paddy": "भात",       # Alias
+    "rice": "भात - धान",
+    "paddy": "भात - धान",       # Alias
 
     # --- NEW: Oilseeds & Cash Crops ---
     "sunflower": "सूर्यफूल",
