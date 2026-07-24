@@ -114,6 +114,7 @@ routes: dict[str, RouteConfig] = {
             "(conservative to optimistic) with agent execution rules."
         ),
         mime_type="application/json",
+        resource="https://agriintellect.site/mandi-optimize",
         extensions=declare_discovery_extension(
             
             input={
