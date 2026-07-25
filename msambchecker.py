@@ -275,6 +275,7 @@ async def fetch_msamb_prices(
     lon: float = 76.94,
     qty_quintals: float = 100.0,
     radius_km: int = 100,
+    use_gemini_fallback: bool = True,
 ) -> list[dict]:
     """
     Cache-first fetch. If cache is cold, races live scrape vs Gemini fallback.
@@ -366,7 +367,7 @@ async def warm_daily_cache(delay_between_scrapes_seconds: float = 3.0) -> dict:
     results = {}
     for crop in CROPS_TO_SCRAPE:
         try:
-            records = await fetch_msamb_prices(crop)
+            records = await fetch_msamb_prices(crop, use_gemini_fallback=False)
             results[crop] = len(records)
             logger.info(f"[msamb] Warmed cache for '{crop}': {len(records)} records")
         except Exception as e:
