@@ -676,7 +676,7 @@ async def get_gemini_price_estimate(
         today = datetime.now(IST).strftime("%d %B %Y")
         marathi_name = CROP_NAME_MAP.get(commodity.lower(), commodity)
 
-                prompt = f"""You are an expert on Maharashtra APMC mandi prices.
+        prompt = f"""You are an expert on Maharashtra APMC mandi prices.
 
 Today: {today}
 Commodity: {commodity} (Marathi: {marathi_name})
@@ -701,8 +701,9 @@ Return ONLY a valid JSON array, no explanation, no markdown:
     "data_age_days": 0,
     "is_stale": false
   }}
-
 ] 
+
+Return 3 records (one per mandi listed) if valid for this region, or [] if invalid according to Rule 1. Output ONLY raw JSON."""
 
 Return 3 records (one per mandi listed) if valid for this region, or [] if invalid according to Rule 1. Output ONLY raw JSON."""
 
