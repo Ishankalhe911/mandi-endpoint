@@ -397,7 +397,7 @@ def safe_float(val: str) -> float:
         return 0.0
 
 
-    async def get_shared_browser(headless: bool = True) -> Browser:
+async def get_shared_browser(headless: bool = True) -> Browser:
       """FIX 2: Creates and reuses a single Chromium instance."""
       global _playwright_instance, _browser_instance
       async with _browser_lock:
