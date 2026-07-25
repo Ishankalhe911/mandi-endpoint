@@ -172,10 +172,10 @@ CROP_NAME_MAP = {
     "jackfruit": "फणस",
     "phanas": "फणस",
     "kathal": "फणस",
-    "coriander": "कोथिंबीर",
-    "cilantro": "कोथिंबीर",
-    "coriander leaves": "कोथिंबीर",
-    "kothamb": "कोथिंबीर",
+    "coriander": "कोथिंबिर",
+    "cilantro": "कोथिंबिर",
+    "coriander leaves": "कोथिंबिर",
+    "kothamb": "कोथिंबिर",
 
     # ---------------------------------------------------------
     # 🌶️ SPICES, CONDIMENTS & HERBS
