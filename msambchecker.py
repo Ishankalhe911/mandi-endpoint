@@ -286,6 +286,14 @@ async def fetch_msamb_prices(
         logger.info(f"[Scraper] Cache hit for {commodity}!")
         return cached
 
+    if not use_gemini_fallback:
+        # Warmup path — scrape only, no Gemini
+        logger.info(f"[Scraper] Warmup scrape for '{commodity}' (no Gemini)")
+        records = await _render_and_scrape(commodity, headless=True)
+        if records:
+            await _set_cached(commodity, records)
+        return records
+
     # Cache is cold — race scrape vs Gemini simultaneously
     logger.info(f"[Scraper] Cache cold for '{commodity}' — racing scrape vs Gemini")
 
