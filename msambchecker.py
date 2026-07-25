@@ -293,6 +293,10 @@ async def fetch_msamb_prices(
         if records:
             await _set_cached(commodity, records)
         return records
+    is_mapped = CROP_NAME_MAP.get(commodity.lower()) is not None
+    if not is_mapped:
+        logger.info(f"[Scraper] '{commodity}' not in CROP_NAME_MAP — skipping scrape, using Gemini only")
+        return await get_gemini_price_estimate(commodity, lat, lon, qty_quintals, radius_km)
 
     # Cache is cold — race scrape vs Gemini simultaneously
     logger.info(f"[Scraper] Cache cold for '{commodity}' — racing scrape vs Gemini")
