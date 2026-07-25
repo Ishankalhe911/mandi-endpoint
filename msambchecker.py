@@ -34,69 +34,275 @@ CACHE_DB_PATH = pathlib.Path(__file__).parent / "msamb_price_cache.db"
 PLAYWRIGHT_TIMEOUT_MS = 45000 
 
 CROP_NAME_MAP = {
-    # --- Existing Grains & Pulses ---
-    "soybean": "सोयाबिन",
-    "cotton": "कापूस",
-    "tur": "तूर",
-    "pigeon pea": "तूर",  # Alias
-    "red gram": "तूर",    # Alias
-    "arhar": "तूर",       # Alias
+    # ---------------------------------------------------------
+    # 🌾 GRAINS & CEREALS
+    # ---------------------------------------------------------
     "jowar": "ज्वारी",
+    "sorghum": "ज्वारी",
     "wheat": "गहू",
-    "onion": "कांदा",
-    "chana": "हरभरा",
-    "chickpea": "हरभरा",  # Alias
     "maize": "मका",
-    "corn": "मका",        # Alias
+    "corn": "मका",
     "bajra": "बाजरी",
-    "pearl millet": "बाजरी", # Alias
+    "pearl millet": "बाजरी",
     "rice": "भात - धान",
-    "paddy": "भात - धान",       # Alias
+    "paddy": "भात - धान",
+    "ragi": "नाचणी",
+    "finger millet": "नाचणी",
+    "nachani": "नाचणी",
 
-    # --- NEW: Oilseeds & Cash Crops ---
+    # ---------------------------------------------------------
+    # 🫘 PULSES & LENTILS
+    # ---------------------------------------------------------
+    "tur": "तूर",
+    "pigeon pea": "तूर",
+    "red gram": "तूर",
+    "arhar": "तूर",
+    "chana": "हरभरा",
+    "chickpea": "हरभरा",
+    "gram": "हरभरा",
+    "bengal gram": "हरभरा",
+    "chana dal": "हरभरा डाळ",
+    "moong": "मूग",
+    "green gram": "मूग",
+    "moong dal": "मूग डाळ",
+    "urad": "उडीद",
+    "black gram": "उडीद",
+    "urad dal": "उडीद डाळ",
+    "masoor": "मसूर",
+    "lentil": "मसूर",
+    "matki": "मठ",
+    "moth bean": "मठ",
+    "peas": "वाटाणा",
+    "green peas": "वाटाणा",
+    "vatana": "वाटाणा",
+    "green peas dry": "वाटाणा",
+    "cowpea": "लोबिया",
+    "lobiya": "लोबिया",
+    "lobia": "लोबिया",
+
+    # ---------------------------------------------------------
+    # 🌻 OILSEEDS & COMMERCIAL CROPS
+    # ---------------------------------------------------------
+    "soybean": "सोयाबिन",
+    "soyabean": "सोयाबिन",
+    "soya": "सोयाबिन",
+    "cotton": "कापूस",
+    "kapus": "कापूस",
     "sunflower": "सूर्यफूल",
     "groundnut": "भुईमूग",
-    "peanut": "भुईमूग",   # Alias
-    "sugarcane": "ऊस",    # Note: Often traded directly to mills via FRP, but handled here just in case.
-    "Drumstick":"शेवगा",
+    "peanut": "भुईमूग",
+    "groundnut seed": "भुईमूग",
+    "safflower": "करडई",
+    "kardai": "करडई",
+    "sesame": "तीळ",
+    "til": "तीळ",
+    "linseed": "जवस",
+    "javas": "जवस",
+    "castor seed": "एरंडी",
+    "erandi": "एरंडी",
+    "sugarcane": "ऊस",
 
-    # --- NEW: Vegetables & Spices ---
+    # ---------------------------------------------------------
+    # 🧅 VEGETABLES
+    # ---------------------------------------------------------
+    "onion": "कांदा",
+    "kanda": "कांदा",
     "potato": "बटाटा",
-    "brinjal": "वांगी",
-    "eggplant": "वांगी",  # Alias
+    "batata": "बटाटा",
     "tomato": "टोमॅटो",
-    "garlic": "लसूण",
-    "lahsun": "लसूण",     # Alias
-    "chilli": "मिरची",
-    "mirchi": "मिरची",    # Alias
+    "brinjal": "वांगी",
+    "eggplant": "वांगी",
+    "baingan": "वांगी",
+    "vangi": "वांगी",
+    "cabbage": "कोबी",
+    "patta gobi": "कोबी",
+    "kobi": "कोबी",
+    "cauliflower": "फ्लॉवर",
+    "phool gobi": "फ्लॉवर",
+    "lady finger": "भेंडी",
+    "okra": "भेंडी",
+    "bhendi": "भेंडी",
+    "bhindi": "भेंडी",
+    "bottle gourd": "दुधी भोपळा",
+    "dudhi": "दुधी भोपळा",
+    "lauki": "दुधी भोपळा",
+    "bitter gourd": "कारले",
+    "karela": "कारले",
+    "karle": "कारले",
+    "cucumber": "काकडी",
+    "kakdi": "काकडी",
+    "ridge gourd": "दोडका",
+    "dodka": "दोडका",
+    "sponge gourd": "घोसळी",
+    "ghosali": "घोसळी",
+    "pumpkin": "भोपळा",
+    "bhopla": "भोपळा",
+    "ash gourd": "कोहळा",
+    "kohala": "कोहळा",
+    "cluster beans": "गवार",
+    "gawar": "गवार",
+    "guar": "गवार",
+    "french beans": "फरसबी",
+    "farsabi": "फरसबी",
+    "beans": "फरसबी",
     "capsicum": "ढोबळी मिरची",
-    "shimla mirch": "ढोबळी मिरची", # Alias
+    "shimla mirch": "ढोबळी मिरची",
+    "bell pepper": "ढोबळी मिरची",
+    "sweet potato": "रताळे",
+    "ratale": "रताळे",
+    "drumstick": "शेवगा",          # ← fixed from "Drumstick"
+    "shevga": "शेवगा",
+    "moringa": "शेवगा",
     "spinach": "पालक",
-    "palak": "पालक",      # Alias
+    "palak": "पालक",
     "fenugreek": "मेथी",
-    "methi": "मेथी",      # Alias
+    "methi": "मेथी",
+    "radish": "मुळा",
+    "mula": "मुळा",
+    "mooli": "मुळा",
+    "carrot": "गाजर",
+    "gajar": "गाजर",
+    "beetroot": "बीटरूट",
+    "beet": "बीटरूट",
+    "elephant yam": "सुरण",
+    "suran": "सुरण",
+    "yam": "सुरण",
+    "raw banana": "कच्ची केळी",
+    "green banana": "कच्ची केळी",
+    "jackfruit": "फणस",
+    "phanas": "फणस",
+    "kathal": "फणस",
+    "coriander": "कोथिंबीर",
+    "cilantro": "कोथिंबीर",
+    "coriander leaves": "कोथिंबीर",
+    "kothamb": "कोथिंबीर",
+
+    # ---------------------------------------------------------
+    # 🌶️ SPICES, CONDIMENTS & HERBS
+    # ---------------------------------------------------------
+    "chilli": "मिरची",
+    "green chilli": "मिरची",
+    "mirchi": "मिरची",
+    "dry red chilli": "लाल मिरची",
+    "red chilli": "लाल मिरची",
+    "lal mirchi": "लाल मिरची",
+    "garlic": "लसूण",
+    "lahsun": "लसूण",
+    "lasun": "लसूण",
     "turmeric": "हळद",
     "haldi": "हळद",
-    # --- NEW: Fruits ---
+    "ginger": "आले",
+    "adrak": "आले",
+    "ale": "आले",
+    "coriander seed": "धने",
+    "dhaniya": "धने",
+    "dhane": "धने",
+    "cumin": "जिरे",
+    "jeera": "जिरे",
+    "jire": "जिरे",
+    "black pepper": "काळी मिरी",
+    "kali mirch": "काळी मिरी",
+    "kali miri": "काळी मिरी",
+    "cinnamon": "दालचिनी",
+    "dalchini": "दालचिनी",
+    "coconut": "नारळ",
+    "naral": "नारळ",
+    "nariyal": "नारळ",
+    "mint": "पुदिना",
+    "pudina": "पुदिना",
+    "tamarind": "चिंच",
+    "chinch": "चिंच",
+    "imli": "चिंच",
+    "jaggery": "गूळ",
+    "gur": "गूळ",
+    "gul": "गूळ",
+
+    # ---------------------------------------------------------
+    # 🍎 FRUITS
+    # ---------------------------------------------------------
     "pomegranate": "डाळिंब",
+    "dalimb": "डाळिंब",
+    "anar": "डाळिंब",
     "orange": "संत्रा",
-    "mango": "आंबा"
+    "santra": "संत्रा",
+    "sweet lime": "मोसंबी",
+    "mosambi": "मोसंबी",
+    "mosanbi": "मोसंबी",
+    "mango": "आंबा",
+    "amba": "आंबा",
+    "aam": "आंबा",
+    "banana": "केळी",
+    "keli": "केळी",
+    "kela": "केळी",
+    "grapes": "द्राक्षे",
+    "draksha": "द्राक्षे",
+    "angur": "द्राक्षे",
+    "papaya": "पपई",
+    "papai": "पपई",
+    "guava": "पेरू",
+    "peru": "पेरू",
+    "amrud": "पेरू",
+    "custard apple": "सीताफळ",
+    "sitaphal": "सीताफळ",
+    "sharifa": "सीताफळ",
+    "sapota": "चिकू",
+    "chikoo": "चिकू",
+    "chiku": "चिकू",
+    "watermelon": "कलिंगड",
+    "kalingad": "कलिंगड",
+    "tarbooz": "कलिंगड",
+    "muskmelon": "खरबूज",
+    "kharbuj": "खरबूज",
+    "kharbooja": "खरबूज",
+    "apple": "सफरचंद",
+    "safarchand": "सफरचंद",
+    "seb": "सफरचंद",
+    "pineapple": "अननस",
+    "ananas": "अननस",
+    "lemon": "लिंबू",
+    "nimbu": "लिंबू",
+    "limbu": "लिंबू",
+    "fig": "अंजीर",
+    "anjeer": "अंजीर",
+    "raisins": "बेदाणा",
+    "bedana": "बेदाणा",
+    "kishmish": "बेदाणा",
+    "cashew": "काजू",
+    "kaju": "काजू",
+    "almond": "बदाम",
+    "badam": "बदाम",
+    "jackfruit": "फणस",   # already above, harmless duplicate
 }
 CROPS_TO_SCRAPE = [
     # Grains & Pulses
-    "soybean", "cotton", "tur", "jowar", "wheat", 
+    "soybean", "cotton", "tur", "jowar", "wheat",
     "onion", "chana", "maize", "bajra", "rice",
-    
+
     # Oilseeds & Cash Crops
     "sunflower", "groundnut", "sugarcane",
-    
+    "safflower", "sesame", "castor seed", "linseed",
+
+    # Pulses (additions)
+    "moong", "urad", "masoor", "cowpea", "matki",
+
     # Vegetables & Spices
-    "potato", "brinjal", "tomato", "garlic", 
-    "chilli", "capsicum", "spinach", "fenugreek", 
-    "turmeric",  # <-- Added here
-    
+    "potato", "brinjal", "tomato", "garlic",
+    "chilli", "capsicum", "spinach", "fenugreek",
+    "turmeric", "drumstick", "ginger", "radish",
+    "carrot", "cabbage", "cauliflower", "okra",
+    "bitter gourd", "bottle gourd", "cucumber",
+    "beetroot", "elephant yam", "cluster beans",
+    "french beans", "coriander", "raw banana",
+
+    # Spices
+    "cumin", "coriander seed", "dry red chilli",
+    "black pepper", "coconut", "jaggery", "tamarind",
+
     # Fruits
-    "pomegranate", "orange", "mango", "lemon", "guava","drumstick"
+    "pomegranate", "orange", "mango", "lemon", "guava",
+    "banana", "grapes", "papaya", "watermelon",
+    "sweet lime", "custard apple", "sapota",
+    "jackfruit", "fig", "pineapple", "apple",
 ]
 def _init_cache_db():
     conn = sqlite3.connect(CACHE_DB_PATH)
