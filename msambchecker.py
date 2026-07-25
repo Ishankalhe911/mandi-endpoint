@@ -705,7 +705,7 @@ Return ONLY a valid JSON array, no explanation, no markdown:
 
 Return 3 records (one per mandi listed) if valid for this region, or [] if invalid according to Rule 1. Output ONLY raw JSON."""
 
-Return 3 records (one per mandi listed) if valid for this region, or [] if invalid according to Rule 1. Output ONLY raw JSON."""
+
 
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = await asyncio.to_thread(
