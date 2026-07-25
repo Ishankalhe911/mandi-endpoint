@@ -180,6 +180,10 @@ async def lifespan(app: FastAPI):
     yield
 
     scheduler.shutdown()
+    # --- ADD THIS TO PREVENT MEMORY LEAKS ---
+    from msambchecker import close_shared_browser
+    await close_shared_browser()
+    print("🛑 Safely closed Playwright Chromium instance.")
     
 
 # ---------------------------------------------------------------------------
