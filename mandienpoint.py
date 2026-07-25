@@ -143,31 +143,42 @@ routes: dict[str, RouteConfig] = {
     ),
 }
 scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
+from msambchecker import warm_daily_cache
+# Add this right after the import
+_warmup_running = False
 
+async def safe_warm_daily_cache():
+    global _warmup_running
+    if _warmup_running:
+        logger.warning("[Scheduler] Warmup already running — skipping this slot")
+        return
+    _warmup_running = True
+    try:
+        await warm_daily_cache()
+    finally:
+        _warmup_running = False
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- Everything before 'yield' runs on Startup ---
-    scheduler.add_job(warm_daily_cache, "cron", hour=6, minute=0)  
-    scheduler.add_job(warm_daily_cache, "cron", hour=9, minute=0)  
-    scheduler.add_job(warm_daily_cache, "cron", hour=10, minute=0)  
-    scheduler.add_job(warm_daily_cache, "cron", hour=12, minute=0)  
-    scheduler.add_job(warm_daily_cache, "cron", hour=13, minute=0)  
-    scheduler.add_job(warm_daily_cache, "cron", hour=16, minute=15)  
-    scheduler.add_job(warm_daily_cache, "cron", hour=18, minute=0)  
-    
-    # Add a test timer a few minutes from now to see it run locally!
-    scheduler.add_job(warm_daily_cache, "cron", hour=17, minute=1)
-     
-    
-    
+    # Best schedule based on MSAMB upload patterns:
+    # APMCs trade 6am-12pm, upload data 8am-2pm IST
+    # Most complete data available after 2pm
+    # Re-scrape at key windows to catch late uploads
+
+    scheduler.add_job(safe_warm_daily_cache, "cron", hour=9, minute=30)   # partial data, early birds
+    scheduler.add_job(safe_warm_daily_cache, "cron", hour=11, minute=0)   # most mandis uploaded by now
+    scheduler.add_job(safe_warm_daily_cache, "cron", hour=14, minute=0)   # most complete — primary slot
+    scheduler.add_job(safe_warm_daily_cache, "cron", hour=16, minute=0)
+    scheduler.add_job(safe_warm_daily_cache, "cron", hour=18, minute=0)    # late uploaders caught
+
     scheduler.start()
-    asyncio.create_task(warm_daily_cache()) 
+
+    # Startup warm — runs once on deploy
+    asyncio.create_task(safe_warm_daily_cache())
     print("✅ SUCCESS: Background Scheduler is now attached to Uvicorn!")
-    
+
     yield
-    
-    # --- Everything after 'yield' runs on Shutdown ---
+
     scheduler.shutdown()
     
 
