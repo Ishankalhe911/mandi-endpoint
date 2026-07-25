@@ -23,7 +23,9 @@ import os
 import json
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
+from google import genai
 
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 logger = logging.getLogger(__name__)
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -267,18 +269,91 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
     return records
 
 
-async def fetch_msamb_prices(commodity: str) -> list[dict]:
-    """Cache-first MSAMB price fetch - only renders once per commodity per day."""
+async def fetch_msamb_prices(
+    commodity: str,
+    lat: float = 18.71,
+    lon: float = 76.94,
+    qty_quintals: float = 100.0,
+    radius_km: int = 100,
+) -> list[dict]:
+    """
+    Cache-first fetch. If cache is cold, races live scrape vs Gemini fallback.
+    Whoever returns first wins. Scrape result gets cached; Gemini result does not.
+    """
     cached = await _get_cached(commodity)
-    if cached is not None:
-        logger.info(f"[Scraper] Cache hit for {commodity}! Instantly returning local data.")
+    if cached is not None and len(cached) > 0:
+        logger.info(f"[Scraper] Cache hit for {commodity}!")
         return cached
 
-    # Always run headlessly in production flow
-    records = await _render_and_scrape(commodity, headless=True)
-    if records:
-        await _set_cached(commodity, records)
-    return records
+    # Cache is cold — race scrape vs Gemini simultaneously
+    logger.info(f"[Scraper] Cache cold for '{commodity}' — racing scrape vs Gemini")
+
+    scrape_task = asyncio.create_task(
+        _render_and_scrape(commodity, headless=True)
+    )
+    gemini_task = asyncio.create_task(
+        get_gemini_price_estimate(commodity, lat, lon, qty_quintals, radius_km)
+    )
+
+    # Wait for EITHER to complete first
+    done, pending = await asyncio.wait(
+        [scrape_task, gemini_task],
+        return_when=asyncio.FIRST_COMPLETED
+    )
+
+    winner = done.pop()
+    try:
+      result = winner.result()
+    except Exception as e:
+      logger.error(f"[Race] Winning task raised exception: {e}")
+      result = []
+
+    # Cancel the loser
+    for task in pending:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    # If scrape won and has real data, cache it
+    if winner == scrape_task and result:
+        await _set_cached(commodity, result)
+        logger.info(f"[Scraper] Scrape won the race for '{commodity}': {len(result)} records")
+        return result
+
+    # If Gemini won or scrape returned empty, use Gemini result
+    # But keep scrape running in background to populate cache for next request
+    if winner == gemini_task and result:
+        logger.info(f"[Gemini] Won the race for '{commodity}': {len(result)} records")
+        # Re-launch scrape in background to warm cache for next caller
+        # Only if scrape task was cancelled (it was the loser)
+        asyncio.create_task(_background_scrape_and_cache(commodity))
+        return result
+
+    # Both failed
+    logger.error(f"[Scraper] Both scrape and Gemini failed for '{commodity}'")
+    return []
+
+
+async def _background_scrape_and_cache(commodity: str):
+    """
+    Runs scrape silently in background after Gemini wins the race.
+    Populates cache so the NEXT request gets real data instantly.
+    """
+    try:
+        logger.info(f"[Scraper] Background scrape started for '{commodity}'")
+        records = await asyncio.wait_for(
+            _render_and_scrape(commodity, headless=True),
+            timeout=60.0
+        )
+        if records:
+            await _set_cached(commodity, records)
+            logger.info(f"[Scraper] Background cache warm done for '{commodity}': {len(records)} records")
+    except asyncio.TimeoutError:
+        logger.warning(f"[Scraper] Background scrape timed out for '{commodity}'")
+    except Exception as e:
+        logger.error(f"[Scraper] Background scrape failed for '{commodity}': {e}")
 
 
 async def warm_daily_cache(delay_between_scrapes_seconds: float = 3.0) -> dict:
@@ -300,7 +375,91 @@ async def warm_daily_cache(delay_between_scrapes_seconds: float = 3.0) -> dict:
         await asyncio.sleep(delay_between_scrapes_seconds)
     return results
 
+async def get_gemini_price_estimate(
+    commodity: str,
+    lat: float,
+    lon: float,
+    qty_quintals: float,
+    radius_km: int,
+) -> list[dict]:
+    """
+    LLM fallback when MSAMB cache is cold.
+    Finds 3 nearest mandis via haversine first, then asks Gemini only for prices.
+    """
+    if not GEMINI_API_KEY:
+        logger.error("[Gemini] GEMINI_API_KEY not set")
+        return []
 
+    # --- Find 3 nearest mandis using existing helper ---
+    # Import here to avoid circular import (mandimodule imports msambchecker)
+    from mandi_locations import MAHARASHTRA_MANDI_COORDS
+    import math
+
+    def _haversine_km(lat1, lon1, lat2, lon2):
+        R = 6371.0
+        p1, p2 = math.radians(lat1), math.radians(lat2)
+        dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+        a = math.sin(dp/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+        return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    try:
+        nearest = sorted(
+            MAHARASHTRA_MANDI_COORDS.items(),
+            key=lambda x: _haversine_km(lat, lon, x[1][0], x[1][1])
+        )[:3]
+
+        mandi_list = "\n".join(
+            f"- {name} (~{_haversine_km(lat, lon, mlat, mlon):.0f}km away)"
+            for name, (mlat, mlon) in nearest
+        )
+
+        today = datetime.now(IST).strftime("%d %B %Y")
+        marathi_name = CROP_NAME_MAP.get(commodity.lower(), commodity)
+
+        prompt = f"""You are an expert on Maharashtra APMC mandi prices.
+
+Today: {today}
+Commodity: {commodity} (Marathi: {marathi_name})
+
+These are the 3 nearest mandis to the farmer (already calculated):
+{mandi_list}
+
+Give realistic estimated modal prices for {commodity} at exactly these 3 mandis today.
+Base estimates on current season, typical Maharashtra price range for this crop, and regional variation.
+
+Return ONLY a valid JSON array, no explanation, no markdown, no backticks:
+[
+  {{
+    "market": "<exact mandi name from the list above>",
+    "variety": "<most common variety traded for {commodity}>",
+    "min_price": <number>,
+    "max_price": <number>,
+    "modal_price": <number>,
+    "district": "<district this mandi is in>",
+    "arrival_date": "{datetime.now(IST).strftime('%d/%m/%Y')}",
+    "data_age_days": 0,
+    "is_stale": false
+  }}
+]
+
+Exactly 3 records, one per mandi listed. Only JSON, nothing else."""
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+        raw = response.text.strip().replace("```json", "").replace("```", "").strip()
+        records = json.loads(raw)
+        for r in records:
+            r["is_llm_estimate"] = True
+            r["data_source"] = "gemini_estimate"
+        logger.info(f"[Gemini] Got {len(records)} estimated records for '{commodity}'")
+        return records
+    except Exception as e:
+        logger.error(f"[Gemini] Fallback failed: {e}")
+        return []
 if __name__ == "__main__":
     # Test Block: Configure logging to print to terminal
     logging.basicConfig(level=logging.INFO)

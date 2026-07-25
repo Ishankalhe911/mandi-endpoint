@@ -506,7 +506,13 @@ async def get_mandi_optimize(
     try:
         # INSTANT CACHE OR LIVE SCRAPE: 
         # This will return 450+ records in 0.01 seconds if already scraped today.
-        records = await fetch_msamb_prices(normalized_crop)
+        records = await fetch_msamb_prices(
+        normalized_crop,
+         lat=lat,
+         lon =lon,
+         qty_quintals=qty_quintals if qty_quintals else 100.0,
+         radius_km=radius_km,
+        )
     except ValueError as ve:
         # The user asked for a crop we haven't added to CROP_NAME_MAP yet
         return {"error": True, "error_type": "VALIDATION", "error_reason": str(ve), "crop": crop}
@@ -524,7 +530,9 @@ async def get_mandi_optimize(
     
     closest_active_mandi_name = None
     min_straight_km = float('inf')
-
+    # Add this BEFORE the for rec in records: loop
+    is_gemini_data = any(r.get("is_llm_estimate") for r in records)
+    data_source_label = "gemini_estimate" if is_gemini_data else "msamb_live"
     for rec in records:
         raw_market = rec["market"].strip()
         english_market_name = MARATHI_TO_ENGLISH.get(raw_market, raw_market)
@@ -588,7 +596,9 @@ async def get_mandi_optimize(
                 "price_method": price_method,
                 "seasonal_factor": seasonal_factor,
                 "estimated_net_profit_inr": current_est_profit, # Feed the extracted value here
-                "english_market_name": english_market_name 
+                "english_market_name": english_market_name,
+                "is_llm_estimate": is_gemini_data,
+                "data_source": data_source_label ,
             }
 
     # Convert the deduplicated dictionary back into a list
@@ -701,6 +711,8 @@ async def get_mandi_optimize(
         "lon": lon, 
         "radius_km": radius_km,
         "time_horizon": time_horizon,
+        "is_llm_estimate": is_gemini_data,
+        "data_source": data_source_label,
         "method_note": None if time_horizon == "now" else METHOD_UPGRADE_PATH,
         
         # --- THE NEW SPLIT STRUCTURE ---

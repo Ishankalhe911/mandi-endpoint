@@ -25,7 +25,7 @@ IMPORTANT - VERIFY BEFORE PRODUCTION:
     docs/source for verify-then-settle-on-success semantics before
     relying on the 400 responses below to be "free" for the caller.
 """
-
+import asyncio
 import os
 import sys
 import pathlib
@@ -142,7 +142,7 @@ routes: dict[str, RouteConfig] = {
         )
     ),
 }
-
+scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 
 
 @asynccontextmanager
@@ -162,6 +162,7 @@ async def lifespan(app: FastAPI):
     
     
     scheduler.start()
+    asyncio.create_task(warm_daily_cache()) 
     print("✅ SUCCESS: Background Scheduler is now attached to Uvicorn!")
     
     yield
@@ -183,7 +184,7 @@ app = FastAPI(
 
 # Add x402 payment middleware (checks X-PAYMENT header before route handler runs)
 app.add_middleware(PaymentMiddlewareASGI, server=server, routes=routes)
-scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
+
 # ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
