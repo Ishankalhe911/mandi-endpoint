@@ -181,10 +181,10 @@ CROP_NAME_MAP = {
     "jackfruit": "फणस",
     "phanas": "फणस",
     "kathal": "फणस",
-    "coriander": "कोथिंबिर",
-    "cilantro": "कोथिंबिर",
-    "coriander leaves": "कोथिंबिर",
-    "kothamb": "कोथिंबिर",
+    "coriander": "कोथिंबीर",
+    "cilantro": "कोथिंबीर",
+    "coriander leaves": "कोथिंबीर",
+    "kothamb": "कोथिंबीर",
 
     # ---------------------------------------------------------
     # 🌶️ SPICES, CONDIMENTS & HERBS
@@ -472,8 +472,35 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
         
         logger.info("[Scraper] Waiting for the Government server to populate the table...")
         await page.wait_for_selector("#CommodityGird tbody tr", timeout=15000)
-        
-        await page.wait_for_timeout(1000) 
+
+        # Smart wait: poll until table has real data rows (≥2 rows with ≥7 cells).
+        # The blind 1000ms wait was not enough — MSAMB's ASP.NET postback can take
+        # 3-10s to repopulate the table after dropdown selection, especially pre-noon.
+        try:
+            await page.wait_for_function(
+                """() => {
+                    const rows = document.querySelectorAll('#CommodityGird tbody tr');
+                    if (rows.length < 2) return false;
+                    const cells = rows[0].querySelectorAll('td');
+                    return cells.length >= 7;
+                }""",
+                timeout=20000
+            )
+            logger.info("[Scraper] Table populated with real data rows")
+        except Exception:
+            try:
+                first_row_text = await page.evaluate(
+                    """() => {
+                        const row = document.querySelector('#CommodityGird tbody tr');
+                        return row ? row.innerText : 'NO ROW FOUND';
+                    }"""
+                )
+                logger.warning(
+                    f"[Scraper] Table did not populate after 20s. "
+                    f"First row content: '{first_row_text.strip()}'"
+                )
+            except Exception:
+                logger.warning("[Scraper] Table did not populate after 20s. Could not read row content.") 
 
         logger.info("[Scraper] Extracting table rows...")
         rows = await page.query_selector_all("#CommodityGird tbody tr")
@@ -605,16 +632,26 @@ async def _background_scrape_and_cache(commodity: str):
         logger.info(f"[Scraper] Background scrape started for '{commodity}'")
         records = await asyncio.wait_for(
             _render_and_scrape(commodity, headless=True),
-            timeout=60.0
+            timeout=90.0   # 45s page load + 20s table wait + buffer
         )
         if records:
             await _set_cached(commodity, records)
-            logger.info(f"[Scraper] Background cache warm done for '{commodity}': {len(records)} records")
+            logger.info(
+                f"[Scraper] ✅ Background cache warm done for '{commodity}': "
+                f"{len(records)} records"
+            )
+        else:
+            logger.warning(
+                f"[Scraper] Background scrape completed for '{commodity}' "
+                f"but MSAMB returned 0 records (prices not uploaded yet)"
+            )
     except asyncio.TimeoutError:
-        logger.warning(f"[Scraper] Background scrape timed out for '{commodity}'")
+        logger.warning(
+            f"[Scraper] Background scrape hard-timed out for '{commodity}' "
+            f"after 90s — MSAMB server unresponsive"
+        )
     except Exception as e:
         logger.error(f"[Scraper] Background scrape failed for '{commodity}': {e}")
-
 
 async def warm_daily_cache(delay_between_scrapes_seconds: float = 3.0) -> dict:
     """
