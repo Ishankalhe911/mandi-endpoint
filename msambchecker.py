@@ -28,6 +28,7 @@ from google import genai
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 logger = logging.getLogger(__name__)
 IST = timezone(timedelta(hours=5, minutes=30)) 
+from google.genai import types
 
 
 from playwright.async_api import async_playwright, Browser, Page
@@ -745,11 +746,13 @@ Return 3 records (one per mandi listed) if valid for this region, or [] if inval
 
 
         client = genai.Client(api_key=GEMINI_API_KEY)
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
+        response = await client.aio.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=prompt,
+    config=types.GenerateContentConfig(
+        tools=[types.Tool(google_search=types.GoogleSearch())]
+    ),
+)
         raw = response.text.strip().replace("```json", "").replace("```", "").strip()
         records = json.loads(raw)
         for r in records:
