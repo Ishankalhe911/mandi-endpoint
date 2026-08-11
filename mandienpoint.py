@@ -2,7 +2,7 @@
 mandiendpoint.py (v3)
 -----------------------
 FastAPI route: POST /mandi-optimize
-x402-avm payment gate: $0.10 USDC on Algorand mainnet
+x402-avm payment gate: $0.06 USDC on Algorand mainnet
 
 Payment flow (M2M / direct x402):
     Any caller -> sends X-PAYMENT header with USDC tx
@@ -75,8 +75,8 @@ AVM_NETWORK: Network = os.getenv(
 # 3. Real USDC on Algorand Mainnet ASA ID: 31566704
 USDC_ASA_ID = os.getenv("USDC_ASA_ID", "31566704")
 
-# 4. Price targeted via absolute atomic micro-units ($0.10 USDC = 100000 micro-units)
-MANDI_PRICE = os.getenv("MANDI_PRICE_USDC", "100000")
+# 4. Price targeted via absolute atomic micro-units ($0.06 USDC = 60000 micro-units)
+MANDI_PRICE = os.getenv("MANDI_PRICE_USDC", "60000")
 
 MAX_SEARCH_RADIUS_KM = 150
 
@@ -180,6 +180,10 @@ async def lifespan(app: FastAPI):
     yield
 
     scheduler.shutdown()
+    # --- ADD THIS TO PREVENT MEMORY LEAKS ---
+    from msambchecker import close_shared_browser
+    await close_shared_browser()
+    print("🛑 Safely closed Playwright Chromium instance.")
     
 
 # ---------------------------------------------------------------------------
@@ -253,7 +257,7 @@ class MandiOptimizeRequest(BaseModel):
     "/mandi-optimize",
     responses={
         402: {
-            "description": "Payment Required. A cryptographically signed Algorand transaction proof for $0.10 USDC must be provided in the X-PAYMENT header."
+            "description": "Payment Required. A cryptographically signed Algorand transaction proof for $0.06 USDC must be provided in the X-PAYMENT header."
         }
     }
 )
@@ -262,7 +266,7 @@ async def mandi_optimize(request: Request, body: MandiOptimizeRequest):
     Returns net-profit optimized APMC markets, logistics vehicle recommendations,
     freight & deduction breakdowns, and AI execution rules for a given location.
 
-    Payment: $0.10 USDC via x402 header (Algorand mainnet)
+    Payment: $0.06 USDC via x402 header (Algorand mainnet)
     No API key required. No account needed.
 
     Response is pure structured data with embedded LLM execution guidelines.
@@ -303,7 +307,7 @@ async def mandi_optimize(request: Request, body: MandiOptimizeRequest):
 @app.get("/health")
 @app.head("/health")
 async def health():
-    return {"status": "ok", "endpoint": "mandi-optimize", "price_usdc": "0.10"}
+    return {"status": "ok", "endpoint": "mandi-optimize", "price_usdc": "0.06"}
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +320,7 @@ async def index():
         "name": "AgriIntel Mandi Optimization API",
         "version": "3.0.0",
         "endpoint": "POST /mandi-optimize",
-        "price": "$0.10 USDC",
+        "price": "$0.06 USDC",
         "network": "Algorand mainnet",
         "payment": "x402 (X-PAYMENT header)",
         "coverage": "Maharashtra, India",
