@@ -783,17 +783,12 @@ Return 3 records (one per mandi listed) if valid for this region, or [] if inval
 
 
 
-        from google.genai import types
-
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = await client.aio.models.generate_content(
-        model="gemini-3.5-flash-lite",  # ← valid model, replaces "gemini-3.1-flash-lite"
-        contents=prompt,
-         config=types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())],
-        temperature=1.0,  # recommended for grounding per Google docs
-    )
-)
+            model="gemini-3.1-flash-lite",
+            contents=prompt,
+           
+        )
         # With grounding enabled, Gemini may prefix search result text before
         # the JSON array — extract just the array by finding [ and ]
         raw = response.text.strip()
