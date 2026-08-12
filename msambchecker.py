@@ -771,6 +771,7 @@ Return 3 records (one per mandi listed) if valid for this region, or [] if inval
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = await client.aio.models.generate_content(
             model="gemini-3.1-flash-lite",
+            content=prompt
            
         )
         # With grounding enabled, Gemini may prefix search result text before
