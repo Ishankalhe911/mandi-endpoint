@@ -14,7 +14,7 @@ RENDER DEPLOYMENT INSTRUCTION:
 When deploying to Render, set your Build Command to:
 `pip install -r requirements.txt && playwright install chromium --with-deps`
 """
-
+import re
 import asyncio
 import logging
 import sqlite3
@@ -487,14 +487,15 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
         # 3-10s to repopulate the table after dropdown selection, especially pre-noon.
         try:
             await page.wait_for_function(
-                """() => {
-                    const rows = document.querySelectorAll('#CommodityGird tbody tr');
-                    if (rows.length < 2) return false;
-                    const cells = rows[0].querySelectorAll('td');
-                    return cells.length >= 7;
-                }""",
-                timeout=20000
-            )
+            """() => {
+        const rows = document.querySelectorAll('#CommodityGird tbody tr');
+        for (let i = 0; i < rows.length; i++) {
+            if (rows[i].querySelectorAll('td').length >= 7) return true;
+          }
+        return false;
+         }""",
+         timeout=20000
+        )
             logger.info("[Scraper] Table populated with real data rows")
         except Exception:
             try:
@@ -514,11 +515,25 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
         logger.info("[Scraper] Extracting table rows...")
         rows = await page.query_selector_all("#CommodityGird tbody tr")
 
+        # --- REPLACE EVERYTHING FROM HERE ---
+     
+        today_str = datetime.now(IST).strftime("%d/%m/%Y")
+        current_section_date = None
+
         for row in rows:
             cells = await row.query_selector_all("td")
+
             if len(cells) < 7:
-                continue 
-            
+                if len(cells) >= 1:
+                    text = (await cells[0].inner_text()).strip()
+                    if re.match(r"^\d{2}/\d{2}/\d{4}$", text):
+                        current_section_date = text
+                        logger.info(f"[Scraper] Entered date section: {current_section_date}")
+                continue
+
+            if current_section_date != today_str:
+                continue
+
             cell_texts = [(await c.inner_text()).strip() for c in cells]
 
             if len(records) == 0:
@@ -526,20 +541,20 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
 
             try:
                 records.append({
-                    "market": cell_texts[0],
-                    "district": "", 
-                    "variety": cell_texts[1],
-                    "min_price": safe_float(cell_texts[4]),
-                    "max_price": safe_float(cell_texts[5]),
-                    "modal_price": safe_float(cell_texts[6]),
-                    "arrival_date": datetime.now().strftime("%d/%m/%Y"),
+                    "market":       cell_texts[0],
+                    "district":     "",
+                    "variety":      cell_texts[1],
+                    "min_price":    safe_float(cell_texts[4]),
+                    "max_price":    safe_float(cell_texts[5]),
+                    "modal_price":  safe_float(cell_texts[6]),
+                    "arrival_date": current_section_date,
                     "data_age_days": 0,
-                    "is_stale": False,
+                    "is_stale":     False,
                 })
             except Exception as row_e:
                 logger.warning(f"[Scraper] Skipped a corrupted row: {row_e}")
-                continue 
-
+                continue
+        # --- TO HERE ---
     except Exception as e:
         logger.error(f"[!] SCRAPER ERROR: {e}")
     finally:
