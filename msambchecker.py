@@ -785,10 +785,13 @@ Return 3 records (one per mandi listed) if valid for this region, or [] if inval
 
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = await client.aio.models.generate_content(
-            model="gemini-3.1-flash-lite",
-            contents=prompt,
-           
-        )
+        model="gemini-3.5-flash-lite",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+        temperature=0.1,  # low temp for factual price data, NOT 1.0
+        # NO google_search tool — incompatible with JSON output requirement
+    )
+)
         # With grounding enabled, Gemini may prefix search result text before
         # the JSON array — extract just the array by finding [ and ]
         raw = response.text.strip()
