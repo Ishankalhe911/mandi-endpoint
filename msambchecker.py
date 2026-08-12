@@ -330,15 +330,12 @@ _init_cache_db()
 
 
 def _cache_get_sync(commodity: str) -> Optional[list]:
-    # 1. Try to translate to Marathi. 
-    # 2. If it is not in the dictionary, fallback to the raw user input and AT LEAST TRY IT.
     marathi_name = CROP_NAME_MAP.get(commodity.strip().lower(), commodity.strip())
     
     today_str = datetime.now(IST).date().isoformat()
     conn = sqlite3.connect(CACHE_DB_PATH)
     try:
         row = conn.execute(
-            # 2. Search using the Marathi name
             "SELECT payload_json, cached_date FROM msamb_price_cache WHERE cache_key = ?",
             (marathi_name,),
         ).fetchone()
@@ -349,10 +346,21 @@ def _cache_get_sync(commodity: str) -> Optional[list]:
         return None
     
     payload_json, cached_date = row
-    if cached_date != today_str:
-        return None
-        
-    return json.loads(payload_json)
+
+    # Fresh today's data — return as-is, no tagging needed
+    if cached_date == today_str:
+        return json.loads(payload_json)
+
+    # Previous day's data — still in SQLite, physically there
+    # Tag each record with the REAL scrape date so formatter
+    # can say "काल चा भाव (12 Aug)" or "2 दिवसांपूर्वीचा भाव (11 Aug)"
+    data = json.loads(payload_json)
+    for record in data:
+        record["is_stale"] = True
+        record["stale_date"] = cached_date        # real ISO date e.g. "2026-08-12"
+        record["data_source"] = "msamb_previous_day"
+    logger.info(f"[Cache] Stale hit for '{commodity}' — data from {cached_date}")
+    return data
 
 
 def _cache_set_sync(commodity: str, records: list):
@@ -536,9 +544,14 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
         logger.error(f"[!] SCRAPER ERROR: {e}")
     finally:
         logger.info(f"[Scraper] Closing tab context. Extracted {len(records)} records.")
-        # Close page & context to free RAM, but KEEP browser running for next crops
-        await page.close()
-        await context.close()
+        # Cancel-safe cleanup — wrapping in try/except prevents a mid-flight
+        # asyncio.CancelledError from leaving page/context open and corrupting
+        # the shared browser instance for subsequent scrape calls
+        try:
+            await page.close()
+            await context.close()
+        except Exception as cleanup_e:
+            logger.warning(f"[Scraper] Page cleanup error (safe to ignore): {cleanup_e}")
 
     return records
 
@@ -553,75 +566,85 @@ async def fetch_msamb_prices(
     use_gemini_fallback: bool = True,
 ) -> list[dict]:
     """
-    Cache-first fetch. If cache is cold, races live scrape vs Gemini fallback.
-    Whoever returns first wins. Scrape result gets cached; Gemini result does not.
+    Cache-first fetch with stale fallback and scraper priority.
+
+    Priority ladder:
+      1. SQLite today       → return immediately (fresh)
+      2. SQLite stale       → try scraper for 20s first
+                              → scraper succeeds → return fresh, update cache
+                              → scraper fails/timeout → return stale (tagged with real date)
+                              → NO Gemini when stale exists (real old > grounded guess)
+      3. True cold miss     → try scraper for 20s
+                              → scraper succeeds → return fresh
+                              → scraper fails → grounded Gemini fallback
+    
+    Warmup path (use_gemini_fallback=False):
+      Scraper only, full internal timeout, no changes from before.
     """
+    # Step 1: SQLite check — returns fresh OR stale (tagged)
     cached = await _get_cached(commodity)
     if cached is not None and len(cached) > 0:
-        logger.info(f"[Scraper] Cache hit for {commodity}!")
-        return cached
+        is_stale = cached[0].get("is_stale", False)
+        if not is_stale:
+            # Fresh today's data — return immediately
+            logger.info(f"[Cache] Fresh hit for '{commodity}'")
+            return cached
+        # Stale data exists — hold it, try scraper first before returning it
+        stale_data = cached
+        logger.info(f"[Cache] Stale hit for '{commodity}' from {cached[0].get('stale_date')} — trying live scrape first")
+    else:
+        stale_data = None
 
+    # Warmup path — scraper only, no timeout change, no Gemini
     if not use_gemini_fallback:
-        # Warmup path — scrape only, no Gemini
         logger.info(f"[Scraper] Warmup scrape for '{commodity}' (no Gemini)")
         records = await _render_and_scrape(commodity, headless=True)
         if records:
             await _set_cached(commodity, records)
         return records
+
+    # Check if crop is mapped before attempting scrape
     is_mapped = CROP_NAME_MAP.get(commodity.lower()) is not None
     if not is_mapped:
-        logger.info(f"[Scraper] '{commodity}' not in CROP_NAME_MAP — skipping scrape, using Gemini only")
+        # Unmapped crop — scraper can't help, go straight to Gemini
+        logger.info(f"[Scraper] '{commodity}' not in CROP_NAME_MAP — using Gemini only")
+        if stale_data:
+            return stale_data
         return await get_gemini_price_estimate(commodity, lat, lon, qty_quintals, radius_km)
 
-    # Cache is cold — race scrape vs Gemini simultaneously
-    logger.info(f"[Scraper] Cache cold for '{commodity}' — racing scrape vs Gemini")
-
-    scrape_task = asyncio.create_task(
-        _render_and_scrape(commodity, headless=True)
-    )
-    gemini_task = asyncio.create_task(
-        get_gemini_price_estimate(commodity, lat, lon, qty_quintals, radius_km)
-    )
-
-    # Wait for EITHER to complete first
-    done, pending = await asyncio.wait(
-        [scrape_task, gemini_task],
-        return_when=asyncio.FIRST_COMPLETED
-    )
-
-    winner = done.pop()
+    # Step 2: Try scraper alone for 20 seconds
+    # Gives scraper a real chance to return live data before falling back
+    # Step 2: Try scraper alone for 35 seconds
+    # 35s chosen to safely cover page.goto (up to 45s internally but usually 10-15s)
+    # plus dropdown select + table populate wait
+    logger.info(f"[Scraper] Trying live scrape for '{commodity}' (35s window)")
     try:
-      result = winner.result()
-    except Exception as e:
-      logger.error(f"[Race] Winning task raised exception: {e}")
-      result = []
-
-    # Cancel the loser
-    for task in pending:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-    # If scrape won and has real data, cache it
-    if winner == scrape_task and result:
-        await _set_cached(commodity, result)
-        logger.info(f"[Scraper] Scrape won the race for '{commodity}': {len(result)} records")
-        return result
-
-    # If Gemini won or scrape returned empty, use Gemini result
-    # But keep scrape running in background to populate cache for next request
-    if winner == gemini_task and result:
-        logger.info(f"[Gemini] Won the race for '{commodity}': {len(result)} records")
-        # Re-launch scrape in background to warm cache for next caller
-        # Only if scrape task was cancelled (it was the loser)
+        records = await asyncio.wait_for(
+            _render_and_scrape(commodity, headless=True),
+            timeout=35.0
+        )
+        if records:
+            await _set_cached(commodity, records)
+            logger.info(f"[Scraper] Live scrape succeeded for '{commodity}': {len(records)} records")
+            return records
+        else:
+            logger.warning(f"[Scraper] Live scrape returned 0 records for '{commodity}' — MSAMB not uploaded yet")
+            # MSAMB might upload later — keep trying in background with full timeout
+            asyncio.create_task(_background_scrape_and_cache(commodity))
+    except asyncio.TimeoutError:
+        logger.warning(f"[Scraper] Live scrape timed out after 35s for '{commodity}'")
+        # MSAMB is slow today — keep trying in background, serve stale/Gemini now
         asyncio.create_task(_background_scrape_and_cache(commodity))
-        return result
+    # Step 3: Scraper failed or returned nothing
+    # If we have stale data → serve it (real data with date stamp > any guess)
+    if stale_data:
+        logger.info(f"[Cache] Serving stale data for '{commodity}' from {stale_data[0].get('stale_date')}")
+        return stale_data
 
-    # Both failed
-    logger.error(f"[Scraper] Both scrape and Gemini failed for '{commodity}'")
-    return []
+    # Step 4: True cold miss — no stale data, scraper failed
+    # Last resort: grounded Gemini
+    logger.info(f"[Gemini] True cold miss for '{commodity}' — firing grounded Gemini")
+    return await get_gemini_price_estimate(commodity, lat, lon, qty_quintals, radius_km)
 
 
 async def _background_scrape_and_cache(commodity: str):
@@ -747,18 +770,26 @@ Return 3 records (one per mandi listed) if valid for this region, or [] if inval
 
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = await client.aio.models.generate_content(
-    model="gemini-2.5-flash",
-    contents=prompt,
-    config=types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())]
-    ),
-)
-        raw = response.text.strip().replace("```json", "").replace("```", "").strip()
+            model="gemini-2.5-flash-lite",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            ),
+        )
+        # With grounding enabled, Gemini may prefix search result text before
+        # the JSON array — extract just the array by finding [ and ]
+        raw = response.text.strip()
+        start = raw.find("[")
+        end = raw.rfind("]")
+        if start == -1 or end == -1:
+            logger.warning(f"[Gemini] No JSON array found in response: {raw[:200]}")
+            return []
+        raw = raw[start:end + 1]
         records = json.loads(raw)
         for r in records:
             r["is_llm_estimate"] = True
-            r["data_source"] = "gemini_estimate"
-        logger.info(f"[Gemini] Got {len(records)} estimated records for '{commodity}'")
+            r["data_source"] = "gemini_grounded"
+        logger.info(f"[Gemini] Got {len(records)} grounded records for '{commodity}'")
         return records
     except Exception as e:
         logger.error(f"[Gemini] Fallback failed: {e}")

@@ -532,7 +532,12 @@ async def get_mandi_optimize(
     min_straight_km = float('inf')
     # Add this BEFORE the for rec in records: loop
     is_gemini_data = any(r.get("is_llm_estimate") for r in records)
-    data_source_label = "gemini_estimate" if is_gemini_data else "msamb_live"
+    is_stale_data = any(r.get("is_stale") for r in records)
+    data_source_label = (
+            "gemini_grounded" if is_gemini_data
+            else "msamb_previous_day" if is_stale_data
+            else "msamb_live"
+        )
     for rec in records:
         raw_market = rec["market"].strip()
         english_market_name = MARATHI_TO_ENGLISH.get(raw_market, raw_market)
@@ -713,6 +718,8 @@ async def get_mandi_optimize(
         "time_horizon": time_horizon,
         "is_llm_estimate": is_gemini_data,
         "data_source": data_source_label,
+        "is_stale_data": is_stale_data,
+        "stale_date": records[0].get("stale_date") if is_stale_data else None,
         "method_note": None if time_horizon == "now" else METHOD_UPGRADE_PATH,
         
         # --- THE NEW SPLIT STRUCTURE ---
