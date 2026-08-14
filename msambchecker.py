@@ -357,7 +357,6 @@ def _cache_get_sync(commodity: str) -> Optional[list]:
     data = json.loads(payload_json)
     for record in data:
         record["is_stale"] = True
-        from datetime import datetime
         record["stale_date"] = datetime.strptime(cached_date, "%Y-%m-%d").strftime("%d/%m/%Y")       # real ISO date e.g. "2026-08-12"
         record["data_source"] = "msamb_previous_day"
     logger.info(f"[Cache] Stale hit for '{commodity}' — data from {cached_date}")
