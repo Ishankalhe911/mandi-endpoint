@@ -357,7 +357,8 @@ def _cache_get_sync(commodity: str) -> Optional[list]:
     data = json.loads(payload_json)
     for record in data:
         record["is_stale"] = True
-        record["stale_date"] = cached_date        # real ISO date e.g. "2026-08-12"
+        from datetime import datetime
+        record["stale_date"] = datetime.strptime(cached_date, "%Y-%m-%d").strftime("%d/%m/%Y")       # real ISO date e.g. "2026-08-12"
         record["data_source"] = "msamb_previous_day"
     logger.info(f"[Cache] Stale hit for '{commodity}' — data from {cached_date}")
     return data
@@ -719,15 +720,15 @@ async def get_gemini_price_estimate(
     radius_km: int,
 ) -> list[dict]:
     """
-    LLM fallback when MSAMB cache is cold.
-    Finds 3 nearest mandis via haversine first, then asks Gemini only for prices.
+    LLM fallback when MSAMB cache is cold and scraper returns 0 records.
+    - No grounding (avoids hidden 20/day free-tier quota bucket)
+    - response_mime_type + response_schema = enforced JSON at token level
+    - Post-generation validator catches semantic errors (per-kg, modal out of range)
     """
     if not GEMINI_API_KEY:
         logger.error("[Gemini] GEMINI_API_KEY not set")
         return []
 
-    # --- Find 3 nearest mandis using existing helper ---
-    # Import here to avoid circular import (mandimodule imports msambchecker)
     from mandi_locations import MAHARASHTRA_MANDI_COORDS
     import math
 
@@ -750,63 +751,104 @@ async def get_gemini_price_estimate(
         )
 
         today = datetime.now(IST).strftime("%d %B %Y")
+        month_name = datetime.now(IST).strftime("%B")
         marathi_name = CROP_NAME_MAP.get(commodity.lower(), commodity)
 
-        prompt = f"""You are an expert on Maharashtra APMC mandi prices.
+        prompt = f"""You are an agricultural market pricing expert for Maharashtra, India.
+Your job: give realistic wholesale APMC mandi price estimates for farmers.
 
-Today: {today}
-Commodity: {commodity} (Marathi: {marathi_name})
-
-These are the 3 nearest mandis to the farmer:
+TODAY: {today}
+COMMODITY: {commodity} (Marathi: {marathi_name})
+NEAREST 3 MANDIS TO FARMER:
 {mandi_list}
 
-CRITICAL RULES:
-1. REGIONAL VALIDITY: Is '{commodity}' actually traded in high volumes at wholesale APMC scale in these specific districts? If it is a niche, retail, or exotic crop (e.g. Strawberries, Dragon Fruit) that is NOT standard for these APMCs, YOU MUST RETURN AN EMPTY ARRAY: []
-2. MATH SANITY CHECK: The prices MUST be in INR per Quintal (1 Quintal = 100 KG). If the wholesale price is ₹150/kg, the quintal price is ₹15,000. DO NOT output the per-kg price.
+PRICING TASK:
+Estimate today's wholesale APMC modal price for {commodity} at each mandi above.
+- Use your knowledge of Maharashtra APMC wholesale prices for {month_name}
+- Prices are INR per QUINTAL (1 quintal = 100 kg) — NOT per kg
+- If you know exact recent prices, use them
+- If uncertain, give a realistic range: set min_price and max_price wide enough to reflect uncertainty, modal_price as your best midpoint estimate
+- modal_price MUST be between min_price and max_price
 
-Return ONLY a valid JSON array, no explanation, no markdown:
-[
-  {{
-    "market": "<exact mandi name from the list above>",
-    "variety": "<most common variety traded>",
-    "min_price": <number>,
-    "max_price": <number>,
-    "modal_price": <number>,
-    "district": "<district this mandi is in>",
-    "arrival_date": "{datetime.now(IST).strftime('%d/%m/%Y')}",
-    "data_age_days": 0,
-    "is_stale": false
-  }}
-] 
+HARD REJECT RULE:
+If {commodity} is genuinely NOT traded at Maharashtra wholesale APMCs at all (e.g. strawberry, dragon fruit, imported exotic produce), return exactly: []
 
-Return 3 records (one per mandi listed) if valid for this region, or [] if invalid according to Rule 1. Output ONLY raw JSON."""
+SANITY CHECK EXAMPLES (do not copy these prices, they are illustrative only):
+- Onion at Lasalgaon: min=800, max=1500, modal=1100 per quintal ✓
+- Apple at Pune: min=4000, max=8000, modal=5500 per quintal ✓
+- Mango at Ratnagiri: min=3000, max=7000, modal=4500 per quintal ✓
+- Dragon fruit: [] (not an APMC commodity) ✓
 
-
+Return one record per mandi (3 total), or [] if hard reject applies."""
 
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = await client.aio.models.generate_content(
-        model="gemini-3.5-flash-lite",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-        temperature=0.1,  # low temp for factual price data, NOT 1.0
-        # NO google_search tool — incompatible with JSON output requirement
-    )
-)
-        # With grounding enabled, Gemini may prefix search result text before
-        # the JSON array — extract just the array by finding [ and ]
-        raw = response.text.strip()
-        start = raw.find("[")
-        end = raw.rfind("]")
-        if start == -1 or end == -1:
-            logger.warning(f"[Gemini] No JSON array found in response: {raw[:200]}")
+            model="gemini-3.5-flash-lite",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "market":        {"type": "string"},
+                            "variety":       {"type": "string"},
+                            "min_price":     {"type": "integer"},
+                            "max_price":     {"type": "integer"},
+                            "modal_price":   {"type": "integer"},
+                            "district":      {"type": "string"},
+                            "arrival_date":  {"type": "string"},
+                            "data_age_days": {"type": "integer"},
+                            "is_stale":      {"type": "boolean"},
+                        },
+                        "required": [
+                            "market", "variety",
+                            "min_price", "max_price", "modal_price",
+                            "district"
+                        ]
+                    }
+                }
+            )
+        )
+
+        # Schema enforces structure — no bracket hunting needed
+        try:
+            records = json.loads(response.text)
+            if not isinstance(records, list):
+                logger.warning(f"[Gemini] Expected list, got {type(records)}: {response.text[:100]}")
+                return []
+        except json.JSONDecodeError as e:
+            logger.error(f"[Gemini] JSON parse failed: {e} | raw: {response.text[:200]}")
             return []
-        raw = raw[start:end + 1]
-        records = json.loads(raw)
+
+        # Post-generation semantic validator — schema can't catch these
+        validated = []
         for r in records:
+            modal = r.get("modal_price", 0)
+            min_p = r.get("min_price", 0)
+            max_p = r.get("max_price", 0)
+
+            if not (min_p <= modal <= max_p):
+                logger.warning(f"[Gemini] Rejected — modal {modal} not between {min_p}-{max_p} for {r.get('market')}")
+                continue
+
+            if modal < 200:
+                logger.warning(f"[Gemini] Rejected — modal {modal} looks like per-kg price for {r.get('market')}")
+                continue
+
+            # Stamp metadata — arrival_date injected here since schema can't enforce format
+            r.setdefault("arrival_date", datetime.now(IST).strftime("%d/%m/%Y"))
+            r.setdefault("data_age_days", 0)
+            r.setdefault("is_stale", False)
             r["is_llm_estimate"] = True
-            r["data_source"] = "gemini_grounded"
-        logger.info(f"[Gemini] Got {len(records)} grounded records for '{commodity}'")
-        return records
+            r["data_source"] = "gemini_estimate"
+            validated.append(r)
+
+        logger.info(f"[Gemini] {len(validated)}/{len(records)} valid records for '{commodity}'")
+        return validated
+
     except Exception as e:
         logger.error(f"[Gemini] Fallback failed: {e}")
         return []

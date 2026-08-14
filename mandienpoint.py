@@ -286,16 +286,19 @@ async def mandi_optimize(request: Request, body: MandiOptimizeRequest):
         radius_km=body.radius_km,
     )
 
-    # Top-level error checks
+# Top-level error checks
     if result.get("error"):
         error_type = result.get("error_type")
-        
-        # Scraper or live data backend down
+
         if error_type == "DATA_UNAVAILABLE":
             return JSONResponse(status_code=503, content=result)
-        
-        # Bad request / validation failure / unsupported crop / no markets found
-        return JSONResponse(status_code=400, content=result)
+
+        if error_type == "VALIDATION":
+            return JSONResponse(status_code=400, content=result)
+
+        # NO_MARKETS_IN_RADIUS and anything else → 200 with error payload
+        # Farmer paid, request was valid, just no nearby data today
+        return JSONResponse(status_code=200, content=result)
 
     return result
 

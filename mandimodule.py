@@ -229,6 +229,11 @@ MARATHI_TO_ENGLISH = {
     "नांदेड": "Nanded", "भोकर": "Bhokar", "देगलूर": "Degloor", "किनवट": "Kinwat", "मुखेड": "Mukhed", 
     "हदगाव": "Hadgaon", "लोहा": "Loha", "कंधार": "Kandhar", "धर्माबाद": "Dharmabad", "लातूर": "Latur", 
     "उदगीर": "Udgir", "अहमदपूर": "Ahmadpur", "निलंगा": "Nilanga", "चाकूर": "Chakur", "औसा": "Ausa",
+    "उमरी": "Umri",
+"नायगाव": "Naigaon",
+"मुदखेड": "Mudkhed",
+"मेहकर": "Mehkar",
+"समुद्रपूर": "Samudrapur",
 
     # 6. Vidarbha
     "अमरावती": "Amravati", "अचलपूर": "Achalpur", "मोर्शी": "Morshi", "वरूड": "Warud", "दर्यापूर": "Daryapur", 
@@ -249,27 +254,246 @@ MARATHI_TO_ENGLISH = {
     "महाड": "Mahad", "रत्नागिरी": "Ratnagiri", "चिपळूण": "Chiplun", "दापोली": "Dapoli", "खेड (रत्नागिरी)": "Khed (ratnagiri)", 
     "सिंधुदुर्ग": "Sindhudurg", "कुडाळ": "Kudal", "सावंतवाडी": "Sawantwadi", "कणकवली": "Kankavli"
 }
+
 CROP_NAME_MAP = {
-    "soybean": "सोयाबिन",
-    "cotton": "कापूस",
-    "tur": "तूर",
-    "pigeon pea": "तूर",  # Alias for Tur
-    "red gram": "तूर",    # Alias for Tur
-    "arhar": "तूर",       # Alias for Tur
+    # ---------------------------------------------------------
+    # 🌾 GRAINS & CEREALS
+    # ---------------------------------------------------------
     "jowar": "ज्वारी",
+    "sorghum": "ज्वारी",
     "wheat": "गहू",
-    "onion": "कांदा",
-    "chana": "हरभरा",     # Adding Bengal Gram just in case
-    "chickpea": "हरभरा",   # Alias for Chana
-    # ... your existing map ...
-    
-    # Extra aliases for high-volume commercial queries
     "maize": "मका",
     "corn": "मका",
     "bajra": "बाजरी",
     "pearl millet": "बाजरी",
-    "rice": "भात",
-    "paddy": "भात"
+    "rice": "भात - धान",
+    "paddy": "भात - धान",
+    "ragi": "नाचणी",
+    "finger millet": "नाचणी",
+    "nachani": "नाचणी",
+
+    # ---------------------------------------------------------
+    # 🫘 PULSES & LENTILS
+    # ---------------------------------------------------------
+    "tur": "तूर",
+    "pigeon pea": "तूर",
+    "red gram": "तूर",
+    "arhar": "तूर",
+    "chana": "हरभरा",
+    "chickpea": "हरभरा",
+    "gram": "हरभरा",
+    "bengal gram": "हरभरा",
+    "chana dal": "हरभरा डाळ",
+    "moong": "मूग",
+    "green gram": "मूग",
+    "moong dal": "मूग डाळ",
+    "urad": "उडीद",
+    "black gram": "उडीद",
+    "urad dal": "उडीद डाळ",
+    "masoor": "मसूर",
+    "lentil": "मसूर",
+    "matki": "मठ",
+    "moth bean": "मठ",
+    "peas": "वाटाणा",
+    "green peas": "वाटाणा",
+    "vatana": "वाटाणा",
+    "green peas dry": "वाटाणा",
+    "cowpea": "लोबिया",
+    "lobiya": "लोबिया",
+    "lobia": "लोबिया",
+
+    # ---------------------------------------------------------
+    # 🌻 OILSEEDS & COMMERCIAL CROPS
+    # ---------------------------------------------------------
+    "soybean": "सोयाबिन",
+    "soyabean": "सोयाबिन",
+    "soya": "सोयाबिन",
+    "cotton": "कापूस",
+    "kapus": "कापूस",
+    "sunflower": "सूर्यफूल",
+    "groundnut": "भुईमूग",
+    "peanut": "भुईमूग",
+    "groundnut seed": "भुईमूग",
+    "safflower": "करडई",
+    "kardai": "करडई",
+    "sesame": "तीळ",
+    "til": "तीळ",
+    "linseed": "जवस",
+    "javas": "जवस",
+    "castor seed": "एरंडी",
+    "erandi": "एरंडी",
+    "sugarcane": "ऊस",
+
+    # ---------------------------------------------------------
+    # 🧅 VEGETABLES
+    # ---------------------------------------------------------
+    "onion": "कांदा",
+    "kanda": "कांदा",
+    "potato": "बटाटा",
+    "batata": "बटाटा",
+    "tomato": "टोमॅटो",
+    "brinjal": "वांगी",
+    "eggplant": "वांगी",
+    "baingan": "वांगी",
+    "vangi": "वांगी",
+    "cabbage": "कोबी",
+    "patta gobi": "कोबी",
+    "kobi": "कोबी",
+    "cauliflower": "फ्लॉवर",
+    "phool gobi": "फ्लॉवर",
+    "lady finger": "भेंडी",
+    "okra": "भेंडी",
+    "bhendi": "भेंडी",
+    "bhindi": "भेंडी",
+    "bottle gourd": "दुधी भोपळा",
+    "dudhi": "दुधी भोपळा",
+    "lauki": "दुधी भोपळा",
+    "bitter gourd": "कारले",
+    "karela": "कारले",
+    "karle": "कारले",
+    "cucumber": "काकडी",
+    "kakdi": "काकडी",
+    "ridge gourd": "दोडका",
+    "dodka": "दोडका",
+    "sponge gourd": "घोसळी",
+    "ghosali": "घोसळी",
+    "pumpkin": "भोपळा",
+    "bhopla": "भोपळा",
+    "ash gourd": "कोहळा",
+    "kohala": "कोहळा",
+    "cluster beans": "गवार",
+    "gawar": "गवार",
+    "guar": "गवार",
+    "french beans": "फरसबी",
+    "farsabi": "फरसबी",
+    "beans": "फरसबी",
+    "capsicum": "ढोबळी मिरची",
+    "shimla mirch": "ढोबळी मिरची",
+    "bell pepper": "ढोबळी मिरची",
+    "sweet potato": "रताळे",
+    "ratale": "रताळे",
+    "drumstick": "शेवगा",          # ← fixed from "Drumstick"
+    "shevga": "शेवगा",
+    "moringa": "शेवगा",
+    "spinach": "पालक",
+    "palak": "पालक",
+    "fenugreek": "मेथी",
+    "methi": "मेथी",
+    "radish": "मुळा",
+    "mula": "मुळा",
+    "mooli": "मुळा",
+    "carrot": "गाजर",
+    "gajar": "गाजर",
+    "beetroot": "बीटरूट",
+    "beet": "बीटरूट",
+    "elephant yam": "सुरण",
+    "suran": "सुरण",
+    "yam": "सुरण",
+    "raw banana": "कच्ची केळी",
+    "green banana": "कच्ची केळी",
+    "jackfruit": "फणस",
+    "phanas": "फणस",
+    "kathal": "फणस",
+    "coriander": "कोथिंबीर",
+    "cilantro": "कोथिंबीर",
+    "coriander leaves": "कोथिंबीर",
+    "kothamb": "कोथिंबीर",
+
+    # ---------------------------------------------------------
+    # 🌶️ SPICES, CONDIMENTS & HERBS
+    # ---------------------------------------------------------
+    "chilli": "मिरची",
+    "green chilli": "मिरची",
+    "mirchi": "मिरची",
+    "dry red chilli": "लाल मिरची",
+    "red chilli": "लाल मिरची",
+    "lal mirchi": "लाल मिरची",
+    "garlic": "लसूण",
+    "lahsun": "लसूण",
+    "lasun": "लसूण",
+    "turmeric": "हळद",
+    "haldi": "हळद",
+    "ginger": "आले",
+    "adrak": "आले",
+    "ale": "आले",
+    "coriander seed": "धने",
+    "dhaniya": "धने",
+    "dhane": "धने",
+    "cumin": "जिरे",
+    "jeera": "जिरे",
+    "jire": "जिरे",
+    "black pepper": "काळी मिरी",
+    "kali mirch": "काळी मिरी",
+    "kali miri": "काळी मिरी",
+    "cinnamon": "दालचिनी",
+    "dalchini": "दालचिनी",
+    "coconut": "नारळ",
+    "naral": "नारळ",
+    "nariyal": "नारळ",
+    "mint": "पुदिना",
+    "pudina": "पुदिना",
+    "tamarind": "चिंच",
+    "chinch": "चिंच",
+    "imli": "चिंच",
+    "jaggery": "गूळ",
+    "gur": "गूळ",
+    "gul": "गूळ",
+
+    # ---------------------------------------------------------
+    # 🍎 FRUITS
+    # ---------------------------------------------------------
+    "pomegranate": "डाळिंब",
+    "dalimb": "डाळिंब",
+    "anar": "डाळिंब",
+    "orange": "संत्रा",
+    "santra": "संत्रा",
+    "sweet lime": "मोसंबी",
+    "mosambi": "मोसंबी",
+    "mosanbi": "मोसंबी",
+    "mango": "आंबा",
+    "amba": "आंबा",
+    "aam": "आंबा",
+    "banana": "केळी",
+    "keli": "केळी",
+    "kela": "केळी",
+    "grapes": "द्राक्षे",
+    "draksha": "द्राक्षे",
+    "angur": "द्राक्षे",
+    "papaya": "पपई",
+    "papai": "पपई",
+    "guava": "पेरू",
+    "peru": "पेरू",
+    "amrud": "पेरू",
+    "custard apple": "सीताफळ",
+    "sitaphal": "सीताफळ",
+    "sharifa": "सीताफळ",
+    "sapota": "चिकू",
+    "chikoo": "चिकू",
+    "chiku": "चिकू",
+    "watermelon": "कलिंगड",
+    "kalingad": "कलिंगड",
+    "tarbooz": "कलिंगड",
+    "muskmelon": "खरबूज",
+    "kharbuj": "खरबूज",
+    "kharbooja": "खरबूज",
+    "apple": "सफरचंद",
+    "safarchand": "सफरचंद",
+    "seb": "सफरचंद",
+    "pineapple": "अननस",
+    "ananas": "अननस",
+    "lemon": "लिंबू",
+    "nimbu": "लिंबू",
+    "limbu": "लिंबू",
+    "fig": "अंजीर",
+    "anjeer": "अंजीर",
+    "raisins": "बेदाणा",
+    "bedana": "बेदाणा",
+    "kishmish": "बेदाणा",
+    "cashew": "काजू",
+    "kaju": "काजू",
+    "almond": "बदाम",
+    "badam": "बदाम",
+    "jackfruit": "फणस",   # already above, harmless duplicate
 }
 
 # ---------------------------------------------------------------------------
@@ -389,7 +613,23 @@ def _compute_net_profit(
     total_transport_cost = per_truck_cost * fleet_size
 
     # 4. APMC deductions (Cess + Commission + Hamali)
-    crop_cat = "vegetables" if crop.lower() in ["onion", "tomato"] else "grains_oilseeds"
+    FRUIT_CROPS = {
+    "mango", "banana", "apple", "grapes", "pomegranate", "orange",
+    "sweet lime", "papaya", "guava", "custard apple", "sapota",
+    "watermelon", "muskmelon", "lemon", "fig", "pineapple",
+    "jackfruit", "raisins", "cashew"
+    },
+    VEGETABLE_CROPS = {"onion", "tomato", "potato", "brinjal", "cabbage",
+    "cauliflower", "okra", "capsicum", "spinach", "fenugreek",
+    "radish", "carrot", "beetroot", "cucumber", "bitter gourd",
+    "bottle gourd", "cluster beans", "french beans", "drumstick",
+    "ginger", "garlic", "coriander", "raw banana", "elephant yam"},
+
+    crop_cat = (
+    "fruits" if crop.lower() in FRUIT_CROPS
+    else "vegetables" if crop.lower() in VEGETABLE_CROPS
+    else "grains_oilseeds"
+) 
     taxes = APMC_DEDUCTIONS[crop_cat]
     
     # We calculate taxes based on optimistic gross to be legally safe (overestimating expenses)
@@ -648,11 +888,12 @@ async def get_mandi_optimize(
             "market": cand["english_market_name"],
             "is_local_baseline": is_local_baseline,
             "is_within_requested_radius": dist_km <= radius_km,
+            # REPLACE WITH THIS:
             "exact_scraped_data": {
                 "modal_price_per_quintal": rec["modal_price"],
                 "variety": rec["variety"].strip(),
-                "data_source": "msamb_live",
-                "is_estimated": False
+                "data_source": cand["data_source"],          # carries correct label per record
+                "is_estimated": cand["is_llm_estimate"],     # True only for Gemini records
             },
             "driving_distance": {
                 "value_km": dist_km,
