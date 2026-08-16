@@ -311,7 +311,26 @@ async def mandi_optimize(request: Request, body: MandiOptimizeRequest):
 @app.head("/health")
 async def health():
     return {"status": "ok", "endpoint": "mandi-optimize", "price_usdc": "0.06"}
-
+@app.get("/mandi-check")
+async def mandi_check(
+    crop: str,
+    lat: float,
+    lon: float,
+    radius_km: int = 100,
+):
+    """
+    Free preflight check — no x402 payment required.
+    Called by WhatsApp agent before creating Razorpay link.
+    Returns {has_data: true/false} without running OSRM or profit math.
+    """
+    result = await get_mandi_optimize(
+        lat=lat,
+        lon=lon,
+        crop=crop,
+        radius_km=radius_km,
+        dry_run=True,
+    )
+    return JSONResponse(status_code=200, content=result)
 
 # ---------------------------------------------------------------------------
 # Discovery endpoint (unpaid - for Bazaar indexing + judges)

@@ -679,6 +679,7 @@ def _apply_seasonal_adjustment(price: float, crop: str, target_date: date) -> tu
 # Public API
 # ---------------------------------------------------------------------------
 
+# NEW
 async def get_mandi_optimize(
     lat: float,
     lon: float,
@@ -687,6 +688,7 @@ async def get_mandi_optimize(
     qty_quintals: Optional[float] = None,
     time_horizon: str = "now",
     radius_km: int = 100,
+    dry_run: bool = False,
 ) -> dict:
     radius_km = min(radius_km, MAX_RADIUS_KM)
 
@@ -762,6 +764,24 @@ async def get_mandi_optimize(
 
     if not records:
         return {"error": True, "error_type": "DATA_UNAVAILABLE", "error_reason": f"No live prices found on MSAMB for '{crop}' today.", "crop": crop}
+
+    # ── DRY RUN: haversine-only check, no OSRM, no Gemini ──────────────
+    if dry_run:
+        for rec in records:
+            raw_market = rec["market"].strip()
+            english_name = MARATHI_TO_ENGLISH.get(raw_market, raw_market)
+            coords = lookup_coords(english_name)
+            if coords is None:
+                continue
+            mlat, mlon = coords
+            if _haversine_km(lat, lon, mlat, mlon) <= radius_km:
+                return {"has_data": True}
+        # No market passed the radius check
+        return {
+            "has_data": False,
+            "error_type": "NO_MARKETS_IN_RADIUS",
+            "error_reason": f"No active markets found for '{crop}' within {radius_km}km today.",
+        }
 
     # STEP 1: fast Haversine pre-rank, zero external calls.
     
