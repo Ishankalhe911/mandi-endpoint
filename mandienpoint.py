@@ -103,7 +103,7 @@ routes: dict[str, RouteConfig] = {
                     amount=MANDI_PRICE,
                     asset=USDC_ASA_ID,
                 ),
-                extra={"name": "USDC", "decimals": 6},
+                extra={"name": "USDC", "decimals": 6, "tag": "x402-global-challenge"},
             ),
         ],
         description=(
