@@ -596,6 +596,16 @@ async def fetch_msamb_prices(
     Warmup path (use_gemini_fallback=False):
       Scraper only, full internal timeout, no changes from before.
     """
+
+    # 🚀 FIX 1: Move the warmup bypass BEFORE the cache check!
+    # If it is the 4 PM cron job (use_gemini_fallback=False), FORCE a scrape
+    # to grab the afternoon APMC uploads and overwrite the morning cache.
+    if not use_gemini_fallback:
+        logger.info(f"[Scraper] FORCED Warmup scrape for '{commodity}' (Ignoring SQLite)")
+        records = await _render_and_scrape(commodity, headless=True)
+        if records:
+            await _set_cached(commodity, records)
+        return records
     # Step 1: SQLite check — returns fresh OR stale (tagged)
     cached = await _get_cached(commodity)
     if cached is not None and len(cached) > 0:
