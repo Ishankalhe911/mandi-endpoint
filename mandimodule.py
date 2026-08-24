@@ -618,12 +618,12 @@ def _compute_net_profit(
     "sweet lime", "papaya", "guava", "custard apple", "sapota",
     "watermelon", "muskmelon", "lemon", "fig", "pineapple",
     "jackfruit", "raisins", "cashew"
-    },
+    }
     VEGETABLE_CROPS = {"onion", "tomato", "potato", "brinjal", "cabbage",
     "cauliflower", "okra", "capsicum", "spinach", "fenugreek",
     "radish", "carrot", "beetroot", "cucumber", "bitter gourd",
     "bottle gourd", "cluster beans", "french beans", "drumstick",
-    "ginger", "garlic", "coriander", "raw banana", "elephant yam"},
+    "ginger", "garlic", "coriander", "raw banana", "elephant yam"}
 
     crop_cat = (
     "fruits" if crop.lower() in FRUIT_CROPS
