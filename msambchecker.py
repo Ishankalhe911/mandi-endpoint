@@ -7,7 +7,8 @@ daily APMC arrival/price data.
 FEATURES:
     - Render Cloud Auto-Detect: Uses headless Linux on Render, MS Edge locally.
     - Bulletproof Locator: Scans visually for Marathi text, bypassing broken HTML.
-    - Local SQLite Caching: Prevents IP bans by caching the 450+ records daily.
+    - Neon Postgres Caching: Survives Render deploys, prevents IP bans, and serves data instantly.
+    - Deduplication Engine: Scans all historical rows to guarantee no active mandis are missed.
     - Fault Tolerant: Safely ignores corrupted rows without crashing the pipeline.
 
 RENDER DEPLOYMENT INSTRUCTION:
@@ -17,21 +18,21 @@ When deploying to Render, set your Build Command to:
 import re
 import asyncio
 import logging
-import sqlite3
+import asyncpg
 import pathlib
 import os
 import json
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 from google import genai
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-logger = logging.getLogger(__name__)
-IST = timezone(timedelta(hours=5, minutes=30)) 
 from google.genai import types
 
-
 from playwright.async_api import async_playwright, Browser, Page
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+DATABASE_URL = os.getenv("DATABASE_URL")  # Neon Postgres URL
+logger = logging.getLogger(__name__)
+IST = timezone(timedelta(hours=5, minutes=30)) 
 
 # --- SINGLETON BROWSER STATE ---
 _playwright_instance = None
@@ -40,7 +41,6 @@ _browser_lock = asyncio.Lock()
 
 
 MSAMB_URL = "https://www.msamb.com/ApmcDetail/APMCPriceInformation"
-CACHE_DB_PATH = pathlib.Path(__file__).parent / "msamb_price_cache.db"
 PLAYWRIGHT_TIMEOUT_MS = 45000 
 
 CROP_NAME_MAP = {
@@ -283,6 +283,7 @@ CROP_NAME_MAP = {
     "badam": "बदाम",
     "jackfruit": "फणस",   # already above, harmless duplicate
 }
+
 CROPS_TO_SCRAPE = [
     # Grains & Pulses
     "soybean", "cotton", "tur", "jowar", "wheat",
@@ -314,87 +315,127 @@ CROPS_TO_SCRAPE = [
     "sweet lime", "custard apple", "sapota",
     "jackfruit", "fig", "pineapple", "apple",
 ]
-def _init_cache_db():
-    conn = sqlite3.connect(CACHE_DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS msamb_price_cache (
-            cache_key TEXT PRIMARY KEY,
-            payload_json TEXT NOT NULL,
-            cached_date TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-_init_cache_db()
 
 
-def _cache_get_sync(commodity: str) -> Optional[list]:
-    marathi_name = CROP_NAME_MAP.get(commodity.strip().lower(), commodity.strip())
-    
-    today_str = datetime.now(IST).date().isoformat()
-    conn = sqlite3.connect(CACHE_DB_PATH)
-    try:
-        row = conn.execute(
-            "SELECT payload_json, cached_date FROM msamb_price_cache WHERE cache_key = ?",
-            (marathi_name,),
-        ).fetchone()
-    finally:
-        conn.close()
-        
-    if row is None:
-        return None
-    
-    payload_json, cached_date = row
+# ---------------------------------------------------------------------------
+# Neon Postgres Caching Engine
+# ---------------------------------------------------------------------------
 
-    # Fresh today's data — return as-is, no tagging needed
-    if cached_date == today_str:
-        return json.loads(payload_json)
+_db_initialized = False
 
-    # Previous day's data — still in SQLite, physically there
-    # Tag each record with the REAL scrape date so formatter
-    # can say "काल चा भाव (12 Aug)" or "2 दिवसांपूर्वीचा भाव (11 Aug)"
-    data = json.loads(payload_json)
-    for record in data:
-        record["is_stale"] = True
-        record["stale_date"] = datetime.strptime(cached_date, "%Y-%m-%d").strftime("%d/%m/%Y")       # real ISO date e.g. "2026-08-12"
-        record["data_source"] = "msamb_previous_day"
-    logger.info(f"[Cache] Stale hit for '{commodity}' — data from {cached_date}")
-    return data
-
-
-def _cache_set_sync(commodity: str, records: list):
-    # 1. Normalize the key using the Marathi translation
-    marathi_name = CROP_NAME_MAP.get(commodity.strip().lower())
-    if not marathi_name:
+async def _ensure_db_init():
+    """Safely initializes the Neon Postgres table. Survives Uvicorn restarts."""
+    global _db_initialized
+    if _db_initialized or not DATABASE_URL:
         return
-        
-    today_str = datetime.now(IST).date().isoformat()
-    conn = sqlite3.connect(CACHE_DB_PATH)
     try:
-        conn.execute(
-            # 2. Save using the Marathi name
-            "INSERT OR REPLACE INTO msamb_price_cache (cache_key, payload_json, cached_date) VALUES (?, ?, ?)",
-            (marathi_name, json.dumps(records), today_str),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+        conn = await asyncpg.connect(DATABASE_URL)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS msamb_prices (
+                crop_key TEXT,
+                market TEXT,
+                variety TEXT,
+                min_price REAL,
+                max_price REAL,
+                modal_price REAL,
+                arrival_date TEXT,
+                updated_at TIMESTAMPTZ,
+                PRIMARY KEY (crop_key, market, variety)
+            )
+        """)
+        await conn.close()
+        _db_initialized = True
+        logger.info("[DB] Postgres Cache Table Initialized Successfully.")
+    except Exception as e:
+        logger.error(f"[DB] Failed to initialize Postgres: {e}")
 
 
 async def _get_cached(commodity: str) -> Optional[list]:
-    return await asyncio.to_thread(_cache_get_sync, commodity)
+    """Fetches records from Postgres and formats them for the Mandi module."""
+    await _ensure_db_init()
+    
+    marathi_name = CROP_NAME_MAP.get(commodity.strip().lower(), commodity.strip())
+    if not DATABASE_URL:
+        return None
+
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        rows = await conn.fetch(
+            "SELECT * FROM msamb_prices WHERE crop_key = $1", marathi_name
+        )
+        await conn.close()
+    except Exception as e:
+        logger.error(f"[DB] Cache GET error: {e}")
+        return None
+
+    if not rows:
+        return None
+
+    today_str = datetime.now(IST).strftime("%d/%m/%Y")
+    records = []
+    
+    for row in rows:
+        arr_date = row["arrival_date"]
+        is_today = (arr_date == today_str)
+        
+        records.append({
+            "market": row["market"],
+            "district": "",
+            "variety": row["variety"],
+            "min_price": row["min_price"],
+            "max_price": row["max_price"],
+            "modal_price": row["modal_price"],
+            "arrival_date": arr_date,
+            "data_age_days": 0 if is_today else 1,
+            "is_stale": not is_today,
+            "stale_date": arr_date if not is_today else None,
+            "data_source": "msamb_live" if is_today else "msamb_previous_day",
+            "updated_at": row["updated_at"] # Used internally by fetch_msamb_prices
+        })
+    
+    logger.info(f"[Cache] Retrieved {len(records)} records for '{commodity}' from Postgres.")
+    return records
 
 
 async def _set_cached(commodity: str, records: list):
-    await asyncio.to_thread(_cache_set_sync, commodity, records)
+    """Upserts fresh scraped data into Postgres."""
+    await _ensure_db_init()
+    
+    marathi_name = CROP_NAME_MAP.get(commodity.strip().lower())
+    if not marathi_name or not DATABASE_URL or not records:
+        return
+
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        now_utc = datetime.now(timezone.utc)
+        
+        # Batch upsert
+        query = """
+            INSERT INTO msamb_prices (crop_key, market, variety, min_price, max_price, modal_price, arrival_date, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (crop_key, market, variety) 
+            DO UPDATE SET 
+                min_price = EXCLUDED.min_price,
+                max_price = EXCLUDED.max_price,
+                modal_price = EXCLUDED.modal_price,
+                arrival_date = EXCLUDED.arrival_date,
+                updated_at = EXCLUDED.updated_at
+        """
+        values = [
+            (marathi_name, r["market"], r["variety"], r["min_price"], r["max_price"], r["modal_price"], r["arrival_date"], now_utc)
+            for r in records
+        ]
+        await conn.executemany(query, values)
+        await conn.close()
+        logger.info(f"[Cache] Successfully saved {len(records)} records for '{commodity}' to Postgres.")
+    except Exception as e:
+        logger.error(f"[DB] Cache SET error: {e}")
 
 
 # ---------------------------------------------------------------------------
 # Scraping Core Engine
 # ---------------------------------------------------------------------------
 
-# --- Add this helper function right above _render_and_scrape ---
 def safe_float(val: str) -> float:
     """Safely converts government data (like '-', 'N/A', or blanks) into 0.0"""
     cleaned = val.replace(",", "").strip()
@@ -407,7 +448,7 @@ def safe_float(val: str) -> float:
 
 
 async def get_shared_browser(headless: bool = True) -> Browser:
-      """FIX 2: Creates and reuses a single Chromium instance."""
+      """Creates and reuses a single Chromium instance."""
       global _playwright_instance, _browser_instance
       async with _browser_lock:
         if _browser_instance is None or not _browser_instance.is_connected():
@@ -425,7 +466,7 @@ async def get_shared_browser(headless: bool = True) -> Browser:
         return _browser_instance
 
 async def create_optimized_page(browser: Browser):
-    """FIX 1: Blocks heavy assets (images, fonts, CSS) to speed up loading 3x-5x."""
+    """Blocks heavy assets (images, fonts, CSS) to speed up loading 3x-5x."""
     context = await browser.new_context(
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     )
@@ -461,13 +502,14 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
     if not marathi_name:
         raise ValueError(f"Crop '{commodity}' is not mapped to Marathi yet. Please add it to CROP_NAME_MAP.")
 
-    records = []
     is_production = os.environ.get("RENDER") == "true"
     use_headless = True if is_production else headless
 
     # Obtain shared browser and optimized page (with asset blocking)
     browser = await get_shared_browser(headless=use_headless)
     page, context = await create_optimized_page(browser)
+    
+    records = []
     
     try:
         logger.info(f"[Scraper] Navigating to MSAMB to find {marathi_name}...")
@@ -482,9 +524,7 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
         logger.info("[Scraper] Waiting for the Government server to populate the table...")
         await page.wait_for_selector("#CommodityGird tbody tr", timeout=15000)
 
-        # Smart wait: poll until table has real data rows (≥2 rows with ≥7 cells).
-        # The blind 1000ms wait was not enough — MSAMB's ASP.NET postback can take
-        # 3-10s to repopulate the table after dropdown selection, especially pre-noon.
+        # Smart wait: poll until table has real data rows
         try:
             await page.wait_for_function(
             """() => {
@@ -512,56 +552,64 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
             except Exception:
                 logger.warning("[Scraper] Table did not populate after 20s. Could not read row content.") 
 
-        logger.info("[Scraper] Extracting table rows...")
+        logger.info("[Scraper] Extracting all historical rows from MSAMB table...")
         rows = await page.query_selector_all("#CommodityGird tbody tr")
 
-        # --- REPLACE EVERYTHING FROM HERE ---
-     
         today_str = datetime.now(IST).strftime("%d/%m/%Y")
         current_section_date = None
+        
+        # --- THE ULTIMATE DEDUPLICATION ENGINE ---
+        # Key: (market_name, variety) -> Value: latest record dict
+        latest_records_by_market: dict[tuple[str, str], dict] = {}
 
         for row in rows:
             cells = await row.query_selector_all("td")
 
+            # Handle Date Header Row
             if len(cells) < 7:
                 if len(cells) >= 1:
                     text = (await cells[0].inner_text()).strip()
                     if re.match(r"^\d{2}/\d{2}/\d{4}$", text):
                         current_section_date = text
-                        logger.info(f"[Scraper] Entered date section: {current_section_date}")
                 continue
 
-            if current_section_date != today_str:
+            if not current_section_date:
                 continue
 
             cell_texts = [(await c.inner_text()).strip() for c in cells]
+            
+            market = cell_texts[0]
+            variety = cell_texts[1] if len(cell_texts) > 1 else "लोकल"
+            key = (market, variety)
 
-            if len(records) == 0:
-                logger.info(f"[DEBUG] First raw row seen: {cell_texts}")
+            # Because MSAMB displays newest dates first:
+            # The FIRST time we see a market, it is GUARANTEED to be that market's newest data!
+            if key not in latest_records_by_market:
+                try:
+                    is_today = (current_section_date == today_str)
+                    latest_records_by_market[key] = {
+                        "market":        market,
+                        "district":      "",
+                        "variety":       variety,
+                        "min_price":     safe_float(cell_texts[4]),
+                        "max_price":     safe_float(cell_texts[5]),
+                        "modal_price":   safe_float(cell_texts[6]),
+                        "arrival_date":  current_section_date,
+                        "data_age_days": 0 if is_today else 1,
+                        "is_stale":      not is_today,
+                    }
+                except Exception as row_e:
+                    logger.warning(f"[Scraper] Skipped malformed row for {market}: {row_e}")
+                    continue
 
-            try:
-                records.append({
-                    "market":       cell_texts[0],
-                    "district":     "",
-                    "variety":      cell_texts[1],
-                    "min_price":    safe_float(cell_texts[4]),
-                    "max_price":    safe_float(cell_texts[5]),
-                    "modal_price":  safe_float(cell_texts[6]),
-                    "arrival_date": current_section_date,
-                    "data_age_days": 0,
-                    "is_stale":     False,
-                })
-            except Exception as row_e:
-                logger.warning(f"[Scraper] Skipped a corrupted row: {row_e}")
-                continue
-        # --- TO HERE ---
+        records = list(latest_records_by_market.values())
+        logger.info(f"[Scraper] Extracted {len(records)} distinct market records across all available dates.")
+        
     except Exception as e:
         logger.error(f"[!] SCRAPER ERROR: {e}")
     finally:
-        logger.info(f"[Scraper] Closing tab context. Extracted {len(records)} records.")
-        # Cancel-safe cleanup — wrapping in try/except prevents a mid-flight
-        # asyncio.CancelledError from leaving page/context open and corrupting
-        # the shared browser instance for subsequent scrape calls
+        logger.info(f"[Scraper] Closing tab context.")
+        # Cancel-safe cleanup
         try:
             await page.close()
             await context.close()
@@ -571,6 +619,9 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
     return records
 
 
+# ---------------------------------------------------------------------------
+# The Zero-Wait Delivery Pipeline
+# ---------------------------------------------------------------------------
 
 async def fetch_msamb_prices(
     commodity: str,
@@ -581,48 +632,40 @@ async def fetch_msamb_prices(
     use_gemini_fallback: bool = True,
 ) -> list[dict]:
     """
-    Cache-first fetch with stale fallback and scraper priority.
-
-    Priority ladder:
-      1. SQLite today       → return immediately (fresh)
-      2. SQLite stale       → try scraper for 20s first
-                              → scraper succeeds → return fresh, update cache
-                              → scraper fails/timeout → return stale (tagged with real date)
-                              → NO Gemini when stale exists (real old > grounded guess)
-      3. True cold miss     → try scraper for 20s
-                              → scraper succeeds → return fresh
-                              → scraper fails → grounded Gemini fallback
-    
-    Warmup path (use_gemini_fallback=False):
-      Scraper only, full internal timeout, no changes from before.
+    Zero-Wait Delivery Pipeline:
+      1. Instantly check Postgres. If data exists, return it immediately to the user.
+      2. If Postgres data is > 4 hours old, quietly trigger a background scrape.
+      3. If Postgres is totally empty (true cold miss), wait 35s for live scrape.
+      4. If live scrape fails, fall back to Gemini.
     """
 
-    # 🚀 FIX 1: Move the warmup bypass BEFORE the cache check!
-    # If it is the 4 PM cron job (use_gemini_fallback=False), FORCE a scrape
-    # to grab the afternoon APMC uploads and overwrite the morning cache.
-    if not use_gemini_fallback:
-        logger.info(f"[Scraper] FORCED Warmup scrape for '{commodity}' (Ignoring SQLite)")
-        records = await _render_and_scrape(commodity, headless=True)
-        if records:
-            await _set_cached(commodity, records)
-        return records
-    # Step 1: SQLite check — returns fresh OR stale (tagged)
+    # --- STEP 1: INSTANT POSTGRES CHECK ---
     cached = await _get_cached(commodity)
-    if cached is not None and len(cached) > 0:
-        is_stale = cached[0].get("is_stale", False)
-        if not is_stale:
-            # Fresh today's data — return immediately
-            logger.info(f"[Cache] Fresh hit for '{commodity}'")
-            return cached
-        # Stale data exists — hold it, try scraper first before returning it
-        stale_data = cached
-        logger.info(f"[Cache] Stale hit for '{commodity}' from {cached[0].get('stale_date')} — trying live scrape first")
-    else:
-        stale_data = None
+    
+    needs_background_refresh = False
+    now = datetime.now(timezone.utc)
+    
+    if cached:
+        # Find the oldest 'updated_at' timestamp among the records
+        oldest_update = min(r.get("updated_at", now) for r in cached)
+        hours_old = (now - oldest_update).total_seconds() / 3600
+        
+        # If data is older than 4 hours, trigger background refresh
+        if hours_old > 4.0:
+            needs_background_refresh = True
+            logger.info(f"[Cache] DB data for '{commodity}' is {hours_old:.1f}h old. Triggering background refresh.")
+            
+        if needs_background_refresh and use_gemini_fallback:
+            asyncio.create_task(_background_scrape_and_cache(commodity))
+            
+        logger.info(f"[Cache] Returning {len(cached)} records INSTANTLY from Postgres.")
+        return cached
 
-    # Warmup path — scraper only, no timeout change, no Gemini
+    # --- STEP 2: TRUE COLD MISS (DB IS EMPTY) ---
+    
+    # Warmup path (cron job) - force scrape, no Gemini fallback
     if not use_gemini_fallback:
-        logger.info(f"[Scraper] Warmup scrape for '{commodity}' (no Gemini)")
+        logger.info(f"[Scraper] FORCED Warmup scrape for '{commodity}'.")
         records = await _render_and_scrape(commodity, headless=True)
         if records:
             await _set_cached(commodity, records)
@@ -631,18 +674,11 @@ async def fetch_msamb_prices(
     # Check if crop is mapped before attempting scrape
     is_mapped = CROP_NAME_MAP.get(commodity.lower()) is not None
     if not is_mapped:
-        # Unmapped crop — scraper can't help, go straight to Gemini
         logger.info(f"[Scraper] '{commodity}' not in CROP_NAME_MAP — using Gemini only")
-        if stale_data:
-            return stale_data
         return await get_gemini_price_estimate(commodity, lat, lon, qty_quintals, radius_km)
 
-    # Step 2: Try scraper alone for 20 seconds
-    # Gives scraper a real chance to return live data before falling back
-    # Step 2: Try scraper alone for 35 seconds
-    # 35s chosen to safely cover page.goto (up to 45s internally but usually 10-15s)
-    # plus dropdown select + table populate wait
-    logger.info(f"[Scraper] Trying live scrape for '{commodity}' (35s window)")
+    # We must wait for the scraper since we have zero data in the database
+    logger.info(f"[Scraper] DB Empty for '{commodity}'. Waiting for live scrape (35s window).")
     try:
         records = await asyncio.wait_for(
             _render_and_scrape(commodity, headless=True),
@@ -653,35 +689,26 @@ async def fetch_msamb_prices(
             logger.info(f"[Scraper] Live scrape succeeded for '{commodity}': {len(records)} records")
             return records
         else:
-            logger.warning(f"[Scraper] Live scrape returned 0 records for '{commodity}' — MSAMB not uploaded yet")
-            # MSAMB might upload later — keep trying in background with full timeout
+            logger.warning(f"[Scraper] Live scrape returned 0 records for '{commodity}'.")
             asyncio.create_task(_background_scrape_and_cache(commodity))
     except asyncio.TimeoutError:
         logger.warning(f"[Scraper] Live scrape timed out after 35s for '{commodity}'")
-        # MSAMB is slow today — keep trying in background, serve stale/Gemini now
         asyncio.create_task(_background_scrape_and_cache(commodity))
-    # Step 3: Scraper failed or returned nothing
-    # If we have stale data → serve it (real data with date stamp > any guess)
-    if stale_data:
-        logger.info(f"[Cache] Serving stale data for '{commodity}' from {stale_data[0].get('stale_date')}")
-        return stale_data
 
-    # Step 4: True cold miss — no stale data, scraper failed
-    # Last resort: grounded Gemini
-    logger.info(f"[Gemini] True cold miss for '{commodity}' — firing grounded Gemini")
+    # --- STEP 3: ULTIMATE FALLBACK ---
+    logger.info(f"[Gemini] Firing grounded Gemini fallback for '{commodity}'")
     return await get_gemini_price_estimate(commodity, lat, lon, qty_quintals, radius_km)
 
 
 async def _background_scrape_and_cache(commodity: str):
     """
-    Runs scrape silently in background after Gemini wins the race.
-    Populates cache so the NEXT request gets real data instantly.
+    Runs scrape silently in background after DB returns old data or after a timeout.
     """
     try:
         logger.info(f"[Scraper] Background scrape started for '{commodity}'")
         records = await asyncio.wait_for(
             _render_and_scrape(commodity, headless=True),
-            timeout=90.0   # 45s page load + 20s table wait + buffer
+            timeout=90.0   # Generous timeout for background task
         )
         if records:
             await _set_cached(commodity, records)
@@ -692,7 +719,7 @@ async def _background_scrape_and_cache(commodity: str):
         else:
             logger.warning(
                 f"[Scraper] Background scrape completed for '{commodity}' "
-                f"but MSAMB returned 0 records (prices not uploaded yet)"
+                f"but MSAMB returned 0 records."
             )
     except asyncio.TimeoutError:
         logger.warning(
@@ -702,24 +729,23 @@ async def _background_scrape_and_cache(commodity: str):
     except Exception as e:
         logger.error(f"[Scraper] Background scrape failed for '{commodity}': {e}")
 
+
 async def warm_daily_cache(delay_between_scrapes_seconds: float = 3.0) -> dict:
     """
-    Proactively scrapes every crop in CROP_NAME_MAP once, so cache is warm
-    before real farmer traffic starts. Sequential with a delay - each call
-    is a full headless-browser render, running 6+ concurrently risks OOM
-    on a small Render instance.
+    Proactively scrapes every crop in CROPS_TO_SCRAPE to populate Postgres.
     """
     results = {}
     for crop in CROPS_TO_SCRAPE:
         try:
             records = await fetch_msamb_prices(crop, use_gemini_fallback=False)
             results[crop] = len(records)
-            logger.info(f"[msamb] Warmed cache for '{crop}': {len(records)} records")
+            logger.info(f"[msamb] Warmed Postgres for '{crop}': {len(records)} records")
         except Exception as e:
             results[crop] = f"failed: {e}"
             logger.warning(f"[msamb] Cache warm failed for '{crop}': {e}")
         await asyncio.sleep(delay_between_scrapes_seconds)
     return results
+
 
 async def get_gemini_price_estimate(
     commodity: str,
@@ -861,6 +887,7 @@ Return one record per mandi (3 total), or [] if hard reject applies."""
     except Exception as e:
         logger.error(f"[Gemini] Fallback failed: {e}")
         return []
+
 if __name__ == "__main__":
     # Test Block: Configure logging to print to terminal
     logging.basicConfig(level=logging.INFO)
