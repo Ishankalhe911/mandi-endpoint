@@ -397,39 +397,6 @@ async def _get_cached(commodity: str) -> Optional[list]:
     return records
 
 
-async def _set_cached(commodity: str, records: list):
-    """Upserts fresh scraped data into Postgres."""
-    await _ensure_db_init()
-    
-    marathi_name = CROP_NAME_MAP.get(commodity.strip().lower())
-    if not marathi_name or not DATABASE_URL or not records:
-        return
-
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        now_utc = datetime.now(timezone.utc)
-        
-        # Batch upsert
-        query = """
-            INSERT INTO msamb_prices (crop_key, market, variety, min_price, max_price, modal_price, arrival_date, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (crop_key, market, variety) 
-            DO UPDATE SET 
-                min_price = EXCLUDED.min_price,
-                max_price = EXCLUDED.max_price,
-                modal_price = EXCLUDED.modal_price,
-                arrival_date = EXCLUDED.arrival_date,
-                updated_at = EXCLUDED.updated_at
-        """
-        values = [
-            (marathi_name, r["market"], r["variety"], r["min_price"], r["max_price"], r["modal_price"], r["arrival_date"], now_utc)
-            for r in records
-        ]
-        await conn.executemany(query, values)
-        await conn.close()
-        logger.info(f"[Cache] Successfully saved {len(records)} records for '{commodity}' to Postgres.")
-    except Exception as e:
-        logger.error(f"[DB] Cache SET error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -887,7 +854,43 @@ Return one record per mandi (3 total), or [] if hard reject applies."""
     except Exception as e:
         logger.error(f"[Gemini] Fallback failed: {e}")
         return []
+async def _set_cached(commodity: str, records: list):
+    """Upserts fresh scraped data into Postgres and clears old ghost data."""
+    await _ensure_db_init()
+    
+    marathi_name = CROP_NAME_MAP.get(commodity.strip().lower())
+    if not marathi_name or not DATABASE_URL or not records:
+        return
 
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        now_utc = datetime.now(timezone.utc)
+        
+        # 🧹 GARBAGE COLLECTION: Prevent the database from storing dead mandis forever
+        # Silently delete any price records older than 7 days
+        await conn.execute("DELETE FROM msamb_prices WHERE updated_at < NOW() - INTERVAL '7 days'")
+        
+        # Batch upsert
+        query = """
+            INSERT INTO msamb_prices (crop_key, market, variety, min_price, max_price, modal_price, arrival_date, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (crop_key, market, variety) 
+            DO UPDATE SET 
+                min_price = EXCLUDED.min_price,
+                max_price = EXCLUDED.max_price,
+                modal_price = EXCLUDED.modal_price,
+                arrival_date = EXCLUDED.arrival_date,
+                updated_at = EXCLUDED.updated_at
+        """
+        values = [
+            (marathi_name, r["market"], r["variety"], r["min_price"], r["max_price"], r["modal_price"], r["arrival_date"], now_utc)
+            for r in records
+        ]
+        await conn.executemany(query, values)
+        await conn.close()
+        logger.info(f"[Cache] Successfully saved {len(records)} records for '{commodity}' to Postgres.")
+    except Exception as e:
+        logger.error(f"[DB] Cache SET error: {e}")
 if __name__ == "__main__":
     # Test Block: Configure logging to print to terminal
     logging.basicConfig(level=logging.INFO)
