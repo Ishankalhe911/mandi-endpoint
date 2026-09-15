@@ -21,3 +21,4 @@ python-dotenv>=1.0.0
 pytz>=2024.1
 
 google-genai
+asyncpg
