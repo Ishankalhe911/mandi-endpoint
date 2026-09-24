@@ -310,7 +310,7 @@ CROP_NAME_MAP = {
     "soya": "सोयाबिन",
     "cotton": "कापूस",
     "kapus": "कापूस",
-    "sunflower": "सूर्यफूल",
+    "sunflower": "सुर्यफुल",
     "groundnut": "भुईमूग",
     "peanut": "भुईमूग",
     "groundnut seed": "भुईमूग",
