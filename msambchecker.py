@@ -98,10 +98,11 @@ CROP_NAME_MAP = {
     "soya": "सोयाबिन",
     "cotton": "कापूस",
     "kapus": "कापूस",
-    "sunflower": "सूर्यफूल",
-    "groundnut": "भुईमूग",
-    "peanut": "भुईमूग",
-    "groundnut seed": "भुईमूग",
+    "sunflower": "सुर्यफुल",         
+    "groundnut": "भुईमुग शेंग (सुकी)", 
+    "peanut": "भुईमुग शेंग (सुकी)",
+    "groundnut seed": "भुईमुग शेंग (सुकी)",
+    "groundnut_wet": "भुईमुग शेंग (ओली)",
     "safflower": "करडई",
     "kardai": "करडई",
     "sesame": "तीळ",
@@ -129,10 +130,10 @@ CROP_NAME_MAP = {
     "kobi": "कोबी",
     "cauliflower": "फ्लॉवर",
     "phool gobi": "फ्लॉवर",
-    "lady finger": "भेंडी",
-    "okra": "भेंडी",
-    "bhendi": "भेंडी",
-    "bhindi": "भेंडी",
+    "lady finger": "भेडी",
+    "okra": "भेडी",
+    "bhendi": "भेडी",
+    "bhindi": "भेडी",
     "bottle gourd": "दुधी भोपळा",
     "dudhi": "दुधी भोपळा",
     "lauki": "दुधी भोपळा",
@@ -230,9 +231,14 @@ CROP_NAME_MAP = {
     # ---------------------------------------------------------
     # 🍎 FRUITS
     # ---------------------------------------------------------
-    "pomegranate": "डाळिंब",
-    "dalimb": "डाळिंब",
-    "anar": "डाळिंब",
+    "pomegranate": "डाळींब",        # MSAMB typo (long i)
+    "custard apple": "सिताफळ",   
+     "sitaphal": "सिताफळ",
+    "sapota": "चिकु",
+    "chikoo": "चिकू",
+    "chiku": "चिकू",
+    "dalimb": "डाळींब",
+    "anar": "डाळींब",
     "orange": "संत्रा",
     "santra": "संत्रा",
     "sweet lime": "मोसंबी",
@@ -252,12 +258,6 @@ CROP_NAME_MAP = {
     "guava": "पेरू",
     "peru": "पेरू",
     "amrud": "पेरू",
-    "custard apple": "सीताफळ",
-    "sitaphal": "सीताफळ",
-    "sharifa": "सीताफळ",
-    "sapota": "चिकू",
-    "chikoo": "चिकू",
-    "chiku": "चिकू",
     "watermelon": "कलिंगड",
     "kalingad": "कलिंगड",
     "tarbooz": "कलिंगड",
@@ -460,7 +460,20 @@ async def close_shared_browser():
         _playwright_instance = None
 
 
+# --- CONCURRENCY LOCK ---
+_active_scrapes = set()
 
+async def _safe_scrape(commodity: str, headless: bool = True) -> list[dict]:
+    """Ensures only ONE scraper runs per crop at a time, preventing server crashes."""
+    if commodity in _active_scrapes:
+        logger.info(f"[Scraper] Scrape already in progress for '{commodity}'. Skipping duplicate browser launch.")
+        return []
+    
+    _active_scrapes.add(commodity)
+    try:
+        return await _render_and_scrape(commodity, headless)
+    finally:
+        _active_scrapes.discard(commodity)
 async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict]:
     # Get the Marathi translation
     marathi_name = CROP_NAME_MAP.get(commodity.lower())
@@ -479,15 +492,25 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
     records = []
     
     try:
-        logger.info(f"[Scraper] Navigating to MSAMB to find {marathi_name}...")
+       logger.info(f"[Scraper] Navigating to MSAMB to find {marathi_name}...")
         await page.goto(MSAMB_URL, timeout=PLAYWRIGHT_TIMEOUT_MS, wait_until="domcontentloaded")
-        
+
+        logger.info(f"[Scraper] Waiting for dropdown to load...")
         await page.wait_for_selector("select", timeout=15000)
-        dropdown = page.locator(f'select:has(option:text-is("{marathi_name}"))').first
-        
-        logger.info(f"[Scraper] Selecting '{marathi_name}'...")
-        await dropdown.select_option(label=marathi_name)
-        
+
+        # 🚀 CRITICAL FIX: re.escape() neutralizes parentheses, Regex ignores trailing HTML spaces!
+        marathi_regex = re.compile(re.escape(marathi_name), re.IGNORECASE)
+
+        # Find the dropdown containing our specific crop using the regex
+        dropdown = page.locator("select", has=page.locator("option", has_text=marathi_regex)).first
+
+        # Safety net: Wait for that specific option to fully attach to the DOM (handles slow AJAX loads)
+        await page.locator("option", has_text=marathi_regex).first.wait_for(state="attached", timeout=15000)
+
+        logger.info(f"[Scraper] Selecting '{marathi_name}' using Regex...")
+        # Playwright natively supports passing a compiled Regex to select_option!
+        await dropdown.select_option(label=marathi_regex)
+
         logger.info("[Scraper] Waiting for the Government server to populate the table...")
         await page.wait_for_selector("#CommodityGird tbody tr", timeout=15000)
 
@@ -589,7 +612,6 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
 # ---------------------------------------------------------------------------
 # The Zero-Wait Delivery Pipeline
 # ---------------------------------------------------------------------------
-
 async def fetch_msamb_prices(
     commodity: str,
     lat: float = 18.71,
@@ -598,57 +620,71 @@ async def fetch_msamb_prices(
     radius_km: int = 100,
     use_gemini_fallback: bool = True,
 ) -> list[dict]:
-    """
-    Zero-Wait Delivery Pipeline:
-      1. Instantly check Postgres. If data exists, return it immediately to the user.
-      2. If Postgres data is > 4 hours old, quietly trigger a background scrape.
-      3. If Postgres is totally empty (true cold miss), wait 35s for live scrape.
-      4. If live scrape fails, fall back to Gemini.
-    """
-
-    # --- STEP 1: INSTANT POSTGRES CHECK ---
-    cached = await _get_cached(commodity)
     
-    needs_background_refresh = False
+    # Check Postgres FIRST
+    cached = await _get_cached(commodity)
     now = datetime.now(timezone.utc)
     
+    hours_old = 999.0
+    has_todays_data = False
+    
     if cached:
-        # Find the oldest 'updated_at' timestamp among the records
         oldest_update = min(r.get("updated_at", now) for r in cached)
         hours_old = (now - oldest_update).total_seconds() / 3600
-        
-        # If data is older than 4 hours, trigger background refresh
-        if hours_old > 4.0:
-            needs_background_refresh = True
-            logger.info(f"[Cache] DB data for '{commodity}' is {hours_old:.1f}h old. Triggering background refresh.")
-            
-        if needs_background_refresh and use_gemini_fallback:
-            asyncio.create_task(_background_scrape_and_cache(commodity))
-            
-        logger.info(f"[Cache] Returning {len(cached)} records INSTANTLY from Postgres.")
-        return cached
+        # If ANY record is NOT stale, we successfully grabbed today's data
+        has_todays_data = any(not r.get("is_stale", True) for r in cached)
 
-    # --- STEP 2: TRUE COLD MISS (DB IS EMPTY) ---
-    
-    # Warmup path (cron job) - force scrape, no Gemini fallback
+
+    # ==========================================
+    # WORKER TYPE 1: CRON JOB (Relentless Scraper)
+    # ==========================================
     if not use_gemini_fallback:
-        logger.info(f"[Scraper] FORCED Warmup scrape for '{commodity}'.")
-        records = await _render_and_scrape(commodity, headless=True)
+        # NO SKIPPING ALLOWED: If the cron job runs, it ALWAYS scrapes.
+        logger.info(f"[Cron] Forcing scheduled background scrape for '{commodity}'.")
+        records = await _safe_scrape(commodity, headless=True)
         if records:
             await _set_cached(commodity, records)
         return records
 
-    # Check if crop is mapped before attempting scrape
+
+    # ==========================================
+    # WORKER TYPE 2: REAL USER REQUEST
+    # ==========================================
+    if cached:
+        if has_todays_data:
+            # We have today's data! Return it instantly.
+            # If it's older than 4 hours, trigger async scrape to catch late APMC arrivals.
+            if hours_old > 4.0:
+                logger.info(f"[User] Today's data for '{commodity}' is {hours_old:.1f}h old. Triggering async scrape for late arrivals.")
+                asyncio.create_task(_background_scrape_and_cache(commodity))
+            
+            logger.info(f"[User] Returning TODAY'S data instantly for '{commodity}'.")
+            return cached
+            
+        else:
+            # WE DO NOT HAVE TODAY'S DATA (Only Yesterday's)
+            # FALLBACK RULE: Give them yesterday's data instantly so they don't wait!
+            logger.info(f"[User] Today's data missing for '{commodity}'. Triggering background scrape, returning YESTERDAY'S data as fallback.")
+            
+            # Trigger background scrape so the next user gets today's data (Throttle check to 1 hour)
+            if hours_old > 1.0:
+                asyncio.create_task(_background_scrape_and_cache(commodity))
+                
+            return cached
+
+
+    # ==========================================
+    # COLD MISS (Database is completely empty for this crop)
+    # ==========================================
     is_mapped = CROP_NAME_MAP.get(commodity.lower()) is not None
     if not is_mapped:
         logger.info(f"[Scraper] '{commodity}' not in CROP_NAME_MAP — using Gemini only")
         return await get_gemini_price_estimate(commodity, lat, lon, qty_quintals, radius_km)
 
-    # We must wait for the scraper since we have zero data in the database
-    logger.info(f"[Scraper] DB Empty for '{commodity}'. Waiting for live scrape (35s window).")
+    logger.info(f"[User] DB entirely empty for '{commodity}'. Waiting for live scrape (35s window).")
     try:
         records = await asyncio.wait_for(
-            _render_and_scrape(commodity, headless=True),
+            _safe_scrape(commodity, headless=True),
             timeout=35.0
         )
         if records:
@@ -658,23 +694,26 @@ async def fetch_msamb_prices(
         else:
             logger.warning(f"[Scraper] Live scrape returned 0 records for '{commodity}'.")
             asyncio.create_task(_background_scrape_and_cache(commodity))
+            
     except asyncio.TimeoutError:
         logger.warning(f"[Scraper] Live scrape timed out after 35s for '{commodity}'")
         asyncio.create_task(_background_scrape_and_cache(commodity))
 
-    # --- STEP 3: ULTIMATE FALLBACK ---
+    # ULTIMATE FALLBACK (If MSAMB is totally down or timed out)
     logger.info(f"[Gemini] Firing grounded Gemini fallback for '{commodity}'")
     return await get_gemini_price_estimate(commodity, lat, lon, qty_quintals, radius_km)
 
-
 async def _background_scrape_and_cache(commodity: str):
     """
-    Runs scrape silently in background after DB returns old data or after a timeout.
+    Runs scrape silently in background after DB returns old data or after a timeout,
+    respecting the anti-spam concurrency lock.
     """
     try:
         logger.info(f"[Scraper] Background scrape started for '{commodity}'")
         records = await asyncio.wait_for(
-            _render_and_scrape(commodity, headless=True),
+            # 🚀 CRITICAL FIX: Use _safe_scrape instead of _render_and_scrape
+            # to prevent launching multiple browsers if multiple users trigger the background task
+            _safe_scrape(commodity, headless=True),
             timeout=90.0   # Generous timeout for background task
         )
         if records:
