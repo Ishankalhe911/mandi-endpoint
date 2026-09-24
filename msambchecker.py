@@ -492,7 +492,7 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
     records = []
     
     try:
-       logger.info(f"[Scraper] Navigating to MSAMB to find {marathi_name}...")
+        logger.info(f"[Scraper] Navigating to MSAMB to find {marathi_name}...")
         await page.goto(MSAMB_URL, timeout=PLAYWRIGHT_TIMEOUT_MS, wait_until="domcontentloaded")
 
         logger.info(f"[Scraper] Waiting for dropdown to load...")
