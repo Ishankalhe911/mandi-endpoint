@@ -39,6 +39,8 @@ _playwright_instance = None
 _browser_instance: Optional[Browser] = None
 _browser_lock = asyncio.Lock()
 
+_last_background_scrape_time: dict[str, datetime] = {}
+
 
 MSAMB_URL = "https://www.msamb.com/ApmcDetail/APMCPriceInformation"
 PLAYWRIGHT_TIMEOUT_MS = 45000 
@@ -568,7 +570,7 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
         rows = await page.query_selector_all("#CommodityGird tbody tr")
 
         today_str = datetime.now(IST).strftime("%d/%m/%Y")
-        current_section_date = None
+        current_section_date = today_str
         
         # --- THE ULTIMATE DEDUPLICATION ENGINE ---
         # Key: (market_name, variety) -> Value: latest record dict
@@ -650,8 +652,20 @@ async def fetch_msamb_prices(
     hours_old = 999.0
     has_todays_data = False
     
+    # 🚀 BUG 3 & 5 FIX: Time-based throttling (1 background scrape per crop per hour)
+    last_scrape = _last_background_scrape_time.get(commodity)
+    can_trigger_scrape = last_scrape is None or (now - last_scrape).total_seconds() > 3600
+
     if cached:
-        oldest_update = min(r.get("updated_at", now) for r in cached)
+        # 🚀 BUG 2 FIX: Ensure timezone safety for updated_at comparisons
+        valid_updates = [r.get("updated_at") for r in cached if r.get("updated_at") is not None]
+        if valid_updates:
+            oldest_update = min(valid_updates)
+            if oldest_update.tzinfo is None:
+                oldest_update = oldest_update.replace(tzinfo=timezone.utc)
+        else:
+            oldest_update = now
+            
         hours_old = (now - oldest_update).total_seconds() / 3600
         # If ANY record is NOT stale, we successfully grabbed today's data
         has_todays_data = any(not r.get("is_stale", True) for r in cached)
@@ -676,8 +690,9 @@ async def fetch_msamb_prices(
         if has_todays_data:
             # We have today's data! Return it instantly.
             # If it's older than 4 hours, trigger async scrape to catch late APMC arrivals.
-            if hours_old > 4.0:
+            if hours_old > 4.0 and can_trigger_scrape:
                 logger.info(f"[User] Today's data for '{commodity}' is {hours_old:.1f}h old. Triggering async scrape for late arrivals.")
+                _last_background_scrape_time[commodity] = now
                 asyncio.create_task(_background_scrape_and_cache(commodity))
             
             logger.info(f"[User] Returning TODAY'S data instantly for '{commodity}'.")
@@ -685,15 +700,12 @@ async def fetch_msamb_prices(
             
         else:
             # WE DO NOT HAVE TODAY'S DATA (Only Yesterday's)
-            # FALLBACK RULE: Give them yesterday's data instantly so they don't wait!
-            logger.info(f"[User] Today's data missing for '{commodity}'. Triggering background scrape, returning YESTERDAY'S data as fallback.")
-            
-            # Trigger background scrape so the next user gets today's data (Throttle check to 1 hour)
-            if hours_old > 1.0:
+            logger.info(f"[User] Today's data missing for '{commodity}'. Returning YESTERDAY'S data as fallback.")
+            if can_trigger_scrape:
+                _last_background_scrape_time[commodity] = now
                 asyncio.create_task(_background_scrape_and_cache(commodity))
                 
             return cached
-
 
     # ==========================================
     # COLD MISS (Database is completely empty for this crop)
@@ -703,11 +715,11 @@ async def fetch_msamb_prices(
         logger.info(f"[Scraper] '{commodity}' not in CROP_NAME_MAP — using Gemini only")
         return await get_gemini_price_estimate(commodity, lat, lon, qty_quintals, radius_km)
 
-    logger.info(f"[User] DB entirely empty for '{commodity}'. Waiting for live scrape (35s window).")
+    logger.info(f"[User] DB entirely empty for '{commodity}'. Waiting for live scrape (45s window).")
     try:
         records = await asyncio.wait_for(
             _safe_scrape(commodity, headless=True),
-            timeout=35.0
+            timeout=45.0
         )
         if records:
             await _set_cached(commodity, records)
@@ -715,11 +727,15 @@ async def fetch_msamb_prices(
             return records
         else:
             logger.warning(f"[Scraper] Live scrape returned 0 records for '{commodity}'.")
-            asyncio.create_task(_background_scrape_and_cache(commodity))
+            if can_trigger_scrape:
+                _last_background_scrape_time[commodity] = now
+                asyncio.create_task(_background_scrape_and_cache(commodity))
             
     except asyncio.TimeoutError:
-        logger.warning(f"[Scraper] Live scrape timed out after 35s for '{commodity}'")
-        asyncio.create_task(_background_scrape_and_cache(commodity))
+        logger.warning(f"[Scraper] Live scrape timed out after 45s for '{commodity}'")
+        if can_trigger_scrape:
+            _last_background_scrape_time[commodity] = now
+            asyncio.create_task(_background_scrape_and_cache(commodity))
 
     # ULTIMATE FALLBACK (If MSAMB is totally down or timed out)
     logger.info(f"[Gemini] Firing grounded Gemini fallback for '{commodity}'")
