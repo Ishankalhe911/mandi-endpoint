@@ -311,9 +311,11 @@ CROP_NAME_MAP = {
     "cotton": "कापूस",
     "kapus": "कापूस",
     "sunflower": "सुर्यफुल",
-    "groundnut": "भुईमूग",
-    "peanut": "भुईमूग",
-    "groundnut seed": "भुईमूग",
+    # Update the groundnut section in CROP_NAME_MAP:
+    "groundnut": "भुईमुग शेंग (सुकी)",       # Standard dry groundnut
+    "peanut": "भुईमुग शेंग (सुकी)",
+    "groundnut seed": "भुईमुग शेंग (सुकी)",
+    "groundnut_wet": "भुईमुग शेंग (ओली)",    # New key for wet groundnut
     "safflower": "करडई",
     "kardai": "करडई",
     "sesame": "तीळ",
