@@ -493,34 +493,34 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
     
     try:
         logger.info(f"[Scraper] Waiting for dropdown to load...")
-        await page.wait_for_selector("select", timeout=15000)
+        
+        # 🚀 FIX 1: Target the EXACT ID. Use state="attached" because Chosen.js hides the element!
+        await page.wait_for_selector("#drpCommodities", state="attached", timeout=20000)
 
-        # 🚀 CRITICAL FIX: re.escape() neutralizes parentheses
+        # 🚀 FIX 2: Regex for robust matching (handles typos and parentheses)
         marathi_regex = re.compile(re.escape(marathi_name), re.IGNORECASE)
 
-        # 1. Find the specific <option> using the Regex
-        target_option = page.locator("option", has_text=marathi_regex).first
-        
-        # 2. Find the parent <select> that contains this option
-        dropdown = page.locator("select", has=target_option).first
+        # 🚀 FIX 3: Target the dropdown directly by ID, then find the option inside it
+        dropdown = page.locator("#drpCommodities")
+        target_option = dropdown.locator("option", has_text=marathi_regex).first
 
-        # Safety net: Wait for that specific option to fully attach to the DOM
+        # Wait for the specific option to attach to the DOM
         await target_option.wait_for(state="attached", timeout=15000)
 
-        # 🚀 PYTHON FIX: Extract the exact string value from the HTML, then select it!
+        # Extract the exact string value from the HTML
         exact_value = await target_option.get_attribute("value")
         
         logger.info(f"[Scraper] Selecting '{marathi_name}' (DOM Value: '{exact_value}')...")
         
-        # Fallback safety: If MSAMB forgot to put a 'value' attribute, use the exact text
+        # 🚀 FIX 4: force=True tells Playwright to click it even if Chosen.js made it invisible!
         if exact_value is not None:
-            await dropdown.select_option(value=exact_value)
+            await dropdown.select_option(value=exact_value, force=True)
         else:
             exact_text = await target_option.inner_text()
-            await dropdown.select_option(label=exact_text)
+            await dropdown.select_option(label=exact_text, force=True)
 
         logger.info("[Scraper] Waiting for the Government server to populate the table...")
-        await page.wait_for_selector("#CommodityGird tbody tr", timeout=15000)
+        await page.wait_for_selector("#CommodityGird tbody tr", timeout=20000)
 
         # Smart wait: poll until table has real data rows
         try:
