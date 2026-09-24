@@ -502,7 +502,7 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
         
         try:
             # 🚀 FIX 2: Wait for the exact ID
-            await page.wait_for_selector("#drpCommodities", state="attached", timeout=20000)
+            await page.wait_for_selector("#drpCommodities", state="attached", timeout=45000)
         except Exception as e:
             # 🚀 FIX 3: THE X-RAY. If we timeout, what page are we ACTUALLY looking at?
             page_title = await page.title()
@@ -519,7 +519,7 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
         target_option = dropdown.locator("option", has_text=marathi_regex).first
 
         # Wait for the specific option to attach
-        await target_option.wait_for(state="attached", timeout=15000)
+        await target_option.wait_for(state="attached", timeout=45000)
 
         # Extract the exact string value from the HTML
         exact_value = await target_option.get_attribute("value")
@@ -534,7 +534,7 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
             await dropdown.select_option(label=exact_text, force=True)
 
         logger.info("[Scraper] Waiting for the Government server to populate the table...")
-        await page.wait_for_selector("#CommodityGird tbody tr", timeout=20000)
+        await page.wait_for_selector("#CommodityGird tbody tr", timeout=45000)
 
         # Smart wait: poll until table has real data rows
         try:
@@ -546,7 +546,7 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
           }
         return false;
          }""",
-         timeout=20000
+         timeout=45000
         )
             logger.info("[Scraper] Table populated with real data rows")
         except Exception:
@@ -558,11 +558,11 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
                     }"""
                 )
                 logger.warning(
-                    f"[Scraper] Table did not populate after 20s. "
+                    f"[Scraper] Table did not populate after 45s. "
                     f"First row content: '{first_row_text.strip()}'"
                 )
             except Exception:
-                logger.warning("[Scraper] Table did not populate after 20s. Could not read row content.") 
+                logger.warning("[Scraper] Table did not populate after 45s. Could not read row content.") 
 
         logger.info("[Scraper] Extracting all historical rows from MSAMB table...")
         rows = await page.query_selector_all("#CommodityGird tbody tr")
