@@ -492,19 +492,33 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
     records = []
     
     try:
+        try:
+        logger.info(f"[Scraper] Navigating to MSAMB to find {marathi_name}...")
+        
+        # 🚀 FIX 1: domcontentloaded stops the page from hanging on external tracking scripts
+        response = await page.goto(MSAMB_URL, timeout=PLAYWRIGHT_TIMEOUT_MS, wait_until="domcontentloaded")
+        
         logger.info(f"[Scraper] Waiting for dropdown to load...")
         
-        # 🚀 FIX 1: Target the EXACT ID. Use state="attached" because Chosen.js hides the element!
-        await page.wait_for_selector("#drpCommodities", state="attached", timeout=20000)
+        try:
+            # 🚀 FIX 2: Wait for the exact ID
+            await page.wait_for_selector("#drpCommodities", state="attached", timeout=20000)
+        except Exception as e:
+            # 🚀 FIX 3: THE X-RAY. If we timeout, what page are we ACTUALLY looking at?
+            page_title = await page.title()
+            page_content = await page.content()
+            logger.error(f"[!] Scraper failed. Page Title seen: '{page_title}'")
+            logger.error(f"[!] HTTP Status: {response.status if response else 'Unknown'}")
+            logger.error(f"[!] HTML Snippet: {page_content[:500]}...")
+            raise e # Rethrow to trigger normal cleanup
 
-        # 🚀 FIX 2: Regex for robust matching (handles typos and parentheses)
+        # Regex for robust matching
         marathi_regex = re.compile(re.escape(marathi_name), re.IGNORECASE)
 
-        # 🚀 FIX 3: Target the dropdown directly by ID, then find the option inside it
         dropdown = page.locator("#drpCommodities")
         target_option = dropdown.locator("option", has_text=marathi_regex).first
 
-        # Wait for the specific option to attach to the DOM
+        # Wait for the specific option to attach
         await target_option.wait_for(state="attached", timeout=15000)
 
         # Extract the exact string value from the HTML
@@ -512,7 +526,7 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
         
         logger.info(f"[Scraper] Selecting '{marathi_name}' (DOM Value: '{exact_value}')...")
         
-        # 🚀 FIX 4: force=True tells Playwright to click it even if Chosen.js made it invisible!
+        # force=True tells Playwright to bypass Chosen.js invisibility
         if exact_value is not None:
             await dropdown.select_option(value=exact_value, force=True)
         else:
