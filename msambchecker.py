@@ -233,7 +233,7 @@ CROP_NAME_MAP = {
     # ---------------------------------------------------------
     "pomegranate": "डाळींब",        # MSAMB typo (long i)
     "custard apple": "सिताफळ",   
-     "sitaphal": "सिताफळ",
+    "sitaphal": "सिताफळ",
     "sapota": "चिकु",
     "chikoo": "चिकू",
     "chiku": "चिकू",
@@ -316,7 +316,6 @@ CROPS_TO_SCRAPE = [
     "jackfruit", "fig", "pineapple", "apple",
 ]
 
-
 # ---------------------------------------------------------------------------
 # Neon Postgres Caching Engine
 # ---------------------------------------------------------------------------
@@ -397,8 +396,6 @@ async def _get_cached(commodity: str) -> Optional[list]:
     return records
 
 
-
-
 # ---------------------------------------------------------------------------
 # Scraping Core Engine
 # ---------------------------------------------------------------------------
@@ -433,15 +430,17 @@ async def get_shared_browser(headless: bool = True) -> Browser:
         return _browser_instance
 
 async def create_optimized_page(browser: Browser):
-    """Blocks heavy assets (images, fonts, CSS) to speed up loading 3x-5x."""
+    """Blocks heavy assets (images, fonts, media) to speed up loading 3x-5x, but ALLOWS CSS."""
     context = await browser.new_context(
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        viewport={"width": 1280, "height": 720}
     )
     page = await context.new_page()
 
     async def intercept_route(route):
         req_type = route.request.resource_type
-        if req_type in ["image", "stylesheet", "font", "media", "imageset"]:
+        # 🚀 NO STYLESHEET HERE! CSS is allowed so Chosen.js dropdown is visible in the DOM
+        if req_type in ["image", "font", "media", "imageset"]:
             await route.abort()
         else:
             await route.continue_()
@@ -474,6 +473,8 @@ async def _safe_scrape(commodity: str, headless: bool = True) -> list[dict]:
         return await _render_and_scrape(commodity, headless)
     finally:
         _active_scrapes.discard(commodity)
+
+
 async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict]:
     # Get the Marathi translation
     marathi_name = CROP_NAME_MAP.get(commodity.lower())
@@ -492,7 +493,6 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
     records = []
     
     try:
-        try:
         logger.info(f"[Scraper] Navigating to MSAMB to find {marathi_name}...")
         
         # 🚀 FIX 1: domcontentloaded stops the page from hanging on external tracking scripts
@@ -915,6 +915,7 @@ Return one record per mandi (3 total), or [] if hard reject applies."""
     except Exception as e:
         logger.error(f"[Gemini] Fallback failed: {e}")
         return []
+
 async def _set_cached(commodity: str, records: list):
     """Upserts fresh scraped data into Postgres and clears old ghost data."""
     await _ensure_db_init()
@@ -952,6 +953,7 @@ async def _set_cached(commodity: str, records: list):
         logger.info(f"[Cache] Successfully saved {len(records)} records for '{commodity}' to Postgres.")
     except Exception as e:
         logger.error(f"[DB] Cache SET error: {e}")
+
 if __name__ == "__main__":
     # Test Block: Configure logging to print to terminal
     logging.basicConfig(level=logging.INFO)
