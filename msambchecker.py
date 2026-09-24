@@ -492,24 +492,32 @@ async def _render_and_scrape(commodity: str, headless: bool = True) -> list[dict
     records = []
     
     try:
-        logger.info(f"[Scraper] Navigating to MSAMB to find {marathi_name}...")
-        await page.goto(MSAMB_URL, timeout=PLAYWRIGHT_TIMEOUT_MS, wait_until="domcontentloaded")
-
         logger.info(f"[Scraper] Waiting for dropdown to load...")
         await page.wait_for_selector("select", timeout=15000)
 
-        # 🚀 CRITICAL FIX: re.escape() neutralizes parentheses, Regex ignores trailing HTML spaces!
+        # 🚀 CRITICAL FIX: re.escape() neutralizes parentheses
         marathi_regex = re.compile(re.escape(marathi_name), re.IGNORECASE)
 
-        # Find the dropdown containing our specific crop using the regex
-        dropdown = page.locator("select", has=page.locator("option", has_text=marathi_regex)).first
+        # 1. Find the specific <option> using the Regex
+        target_option = page.locator("option", has_text=marathi_regex).first
+        
+        # 2. Find the parent <select> that contains this option
+        dropdown = page.locator("select", has=target_option).first
 
-        # Safety net: Wait for that specific option to fully attach to the DOM (handles slow AJAX loads)
-        await page.locator("option", has_text=marathi_regex).first.wait_for(state="attached", timeout=15000)
+        # Safety net: Wait for that specific option to fully attach to the DOM
+        await target_option.wait_for(state="attached", timeout=15000)
 
-        logger.info(f"[Scraper] Selecting '{marathi_name}' using Regex...")
-        # Playwright natively supports passing a compiled Regex to select_option!
-        await dropdown.select_option(label=marathi_regex)
+        # 🚀 PYTHON FIX: Extract the exact string value from the HTML, then select it!
+        exact_value = await target_option.get_attribute("value")
+        
+        logger.info(f"[Scraper] Selecting '{marathi_name}' (DOM Value: '{exact_value}')...")
+        
+        # Fallback safety: If MSAMB forgot to put a 'value' attribute, use the exact text
+        if exact_value is not None:
+            await dropdown.select_option(value=exact_value)
+        else:
+            exact_text = await target_option.inner_text()
+            await dropdown.select_option(label=exact_text)
 
         logger.info("[Scraper] Waiting for the Government server to populate the table...")
         await page.wait_for_selector("#CommodityGird tbody tr", timeout=15000)
